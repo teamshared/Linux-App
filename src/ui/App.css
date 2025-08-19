@@ -3,12 +3,27 @@
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  /* adding the below to make the text box and button centered */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem
 }
 
+#errormsg{
+  font-size: 1rem; 
+  color: #333;
+}
 
 .title {
   font-size: 3rem; 
   color: #333;
+}
+
+#urls{
+  resize: none;
+  height: 400px;
+  width: 300px;
 }
 
 .logo {
@@ -24,21 +39,6 @@
   filter: drop-shadow(0 0 2em #61dafbaa);
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
 .card {
   padding: 2em;
 }
@@ -49,4 +49,11 @@
 
 .App {
   background-color: white; 
+}
+
+.export-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
 }
