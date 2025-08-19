@@ -6,7 +6,8 @@
   "main": "src/electron/main.js",
   "scripts": {
     "dev:r": "vite",
-    "dev:e": "electron .",
+    "dev:e2": "electron .",
+    "dev:e": "npm run build && sleep 1 && electron .",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
