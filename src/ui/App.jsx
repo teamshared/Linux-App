@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 function App() {
   const [urlList, seturlList] = useState('')
   const [savedMsg, setsavedMsg] = useState('')
+  const [focusState, setfocusState] = useState(false)
 
   useEffect(function (){
     window.api.onReply(function (message){
@@ -23,6 +24,14 @@ function App() {
     seturlList('')
   }
 
+  function focusSession(){
+    setfocusState(!focusState)
+    if (!focusState) {
+      setsavedMsg("Focus mode ON")
+    } else {
+      setsavedMsg("Focus mode OFF")
+    }
+  }
 
 
   return (
@@ -56,6 +65,10 @@ function App() {
 
         <button onClick={exportList}>
           Export to txt
+        </button>
+
+        <button id="focus-state" onClick={focusSession}>
+          Start Focus Session
         </button>
 
       </div>
