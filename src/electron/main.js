@@ -3,11 +3,21 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow } from "electron";
+import { Menu, Tray } from 'electron'
+import {createTray} from "./system-tray.js"
 
 import './Blocker.js'  // or
 
+let tray = null
+app.whenReady().then(() => {
+
+})
+
 
 app.on("ready", ()=>{
+
+    tray = createTray()
+
     const mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
         height: 850,

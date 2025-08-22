@@ -1,11 +1,11 @@
 import './App.css'
 import FocusBearPage from './FocusBearPage'
-let customMessage = "Hello from the rendere process"
 import { useState, useEffect } from 'react';
 
 
 
 function App() {
+  //hooks
   const [urlList, seturlList] = useState('')
   const [savedMsg, setsavedMsg] = useState('')
   const [focusState, setfocusState] = useState(false)
@@ -31,6 +31,10 @@ function App() {
     } else {
       setsavedMsg("Focus mode OFF")
     }
+  }
+
+  function settingsShow(){
+    window.api.showSettingsWindow()
   }
 
 
@@ -69,6 +73,10 @@ function App() {
 
         <button id="focus-state" onClick={focusSession}>
           Start Focus Session
+        </button>
+
+        <button id="settings" onClick={settingsShow}>
+          Show Settings
         </button>
 
       </div>
