@@ -1,11 +1,11 @@
 import './App.css'
 import FocusBearPage from './FocusBearPage'
+let customMessage = "Hello from the rendere process"
 import { useState, useEffect } from 'react';
 
 
 
 function App() {
-  //hooks
   const [urlList, seturlList] = useState('')
   const [savedMsg, setsavedMsg] = useState('')
   const [focusState, setfocusState] = useState(false)
@@ -14,8 +14,14 @@ function App() {
     window.api.onReply(function (message){
       setsavedMsg(message)
     })
-  }, [])
-  
+    // Listen for focus session results (block or unblock)
+    // Toggles the button label based on success feedback from main process
+    window.api.onFocusSessionResult((message) => {
+      setsavedMsg(message)
+      setfocusState((prev) => !prev); // Toggle focus state (ON ↔ OFF)
+    });
+  }, []);
+
 
   function exportList(){
     console.log("export list")
@@ -24,17 +30,9 @@ function App() {
     seturlList('')
   }
 
+  // Triggers the focus session toggle (start or stop)
   function focusSession(){
-    setfocusState(!focusState)
-    if (!focusState) {
-      setsavedMsg("Focus mode ON")
-    } else {
-      setsavedMsg("Focus mode OFF")
-    }
-  }
-
-  function settingsShow(){
-    window.api.showSettingsWindow()
+    window.api.startFocusSession();
   }
 
 
@@ -71,12 +69,9 @@ function App() {
           Export to txt
         </button>
 
+        {/* Button text changes dynamically based on focusState */}
         <button id="focus-state" onClick={focusSession}>
-          Start Focus Session
-        </button>
-
-        <button id="settings" onClick={settingsShow}>
-          Show Settings
+          {focusState ? "Stop Focus Session" : "Start Focus Session"}
         </button>
 
       </div>
