@@ -29,11 +29,11 @@ let isFocusActive = false;
 ipcMain.on('start-focus-session', (event) => {
     // Path to the blocking script and the blocklist file exported from the GUI
     const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
-    const blocklistPath = join(__dirname, 'blocked-urls.txt');
+    const blocklistPath = '/tmp/focusbear-blocklist.txt';
     // Decide whether to block or unblock based on the current state
     const command = isFocusActive
-        ? `sudo node "${scriptPath}" unblock`
-        : `sudo node "${scriptPath}" block --list "${blocklistPath}"`;
+        ? `pkexec node "${scriptPath}" unblock`
+        : `pkexec node "${scriptPath}" block --list "${blocklistPath}"`;
 
     // Log the command being executed for debugging purposes
     console.log(`Executing command: ${command}`);
