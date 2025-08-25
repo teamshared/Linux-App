@@ -19,12 +19,38 @@ const API = {
         return ipcRenderer.send("start-focus-session")
     },
 
-    // Listens for the result of the focus session action (block/unblock)
+
+    // url functions
+    grabCurrentUrl: function() {
+        return ipcRenderer.invoke('grab-current-url');
+    },
+
+    grabAllUrls: function() {
+        return ipcRenderer.invoke('grab-all-urls');
+    },
+
+    startMonitoring: function() {
+        return ipcRenderer.send('start-url-monitoring');
+    },
+
+    stopMonitoring: function() {
+        return ipcRenderer.send('stop-url-monitoring');
+    },
+
+    onUrlGrabbed: function(callback) {
+        ipcRenderer.on('url-grabbed', function (event, data) {
+            callback(data);
+        });
+    },
+
+    
     onFocusSessionResult: function(callback) {
         ipcRenderer.on('focus-session-result', function (event, message) {
             callback(message);
         });
     }
+
+
 
 };
 
