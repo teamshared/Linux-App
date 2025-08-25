@@ -1,7 +1,7 @@
-const { BrowserWindow, app } = require('electron');
+import { BrowserWindow } from 'electron';
 
 
-function createExternalUIWindow(url) {
+function createWindow(url) {
   const externalWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -10,17 +10,21 @@ function createExternalUIWindow(url) {
       contextIsolation: true,
       enableRemoteModule: false,
       webSecurity: true,
-      allowRunningInsecureContent: false
+      allowRunningInsecureContent: false,
+      autoHideMenuBar: true,
+
     }
   });
 
   externalWindow.loadURL(url);
   
   externalWindow.webContents.on('will-navigate', function (event, navigationUrl) {
-    if (!navigationUrl.startsWith('https://dashboard.focusbear.io/settings')) {
+    if (!navigationUrl.startsWith(url)) {
       event.preventDefault();
     }
   });
 
   return externalWindow;
 }
+
+export default createWindow;

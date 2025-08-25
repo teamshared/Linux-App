@@ -11,7 +11,7 @@ const API = {
 
 
     showSettingsWindow: function(){
-        return 
+        return ipcRenderer.send("show-settings");
     },
 
     onReply: function(callback) {
