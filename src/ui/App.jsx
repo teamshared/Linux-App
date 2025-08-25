@@ -1,6 +1,7 @@
 import './App.css'
 import FocusBearPage from './FocusBearPage'
 let customMessage = "Hello from the rendere process"
+
 import { useState, useEffect } from 'react';
 
 
@@ -30,9 +31,39 @@ function App() {
     seturlList('')
   }
 
-  // Triggers the focus session toggle (start or stop)
   function focusSession(){
     window.api.startFocusSession();
+  }
+
+  async function grabCurrentUrl() {
+    try {
+      setsavedMsg("Grabbing URL...");
+      const result = await window.api.grabCurrentUrl();
+      if (result) {
+        setsavedMsg(`Found URL: ${result.url}`);
+        seturlList(prev => prev ? `${prev}\n${result.url}` : result.url);
+      } else {
+        setsavedMsg("No URL found");
+      }
+    } catch (error) {
+      setsavedMsg(`Error: ${error.message}`);
+    }
+  }
+
+  async function grabAllUrls() {
+    try {
+      setsavedMsg("Grabbing all URLs...");
+      const results = await window.api.grabAllUrls();
+      if (results.length > 0) {
+        const urls = results.map(r => r.url).join('\n');
+        seturlList(urls);
+        setsavedMsg(`Found ${results.length} URLs`);
+      } else {
+        setsavedMsg("No URLs found");
+      }
+    } catch (error) {
+      setsavedMsg(`Error: ${error.message}`);
+    }
   }
 
 
@@ -72,6 +103,14 @@ function App() {
         {/* Button text changes dynamically based on focusState */}
         <button id="focus-state" onClick={focusSession}>
           {focusState ? "Stop Focus Session" : "Start Focus Session"}
+        </button>
+
+        <button onClick={grabCurrentUrl}>
+          Grab Current URL
+        </button>
+
+        <button onClick={grabAllUrls}>
+          Grab All URLs
         </button>
 
       </div>
