@@ -5,6 +5,8 @@ import { writeFileSync } from 'fs';
 const __dirname = dirname(__filename);
 import { ipcMain } from 'electron';
 
+
+
 ipcMain.on("url-channel", function (event, arg) {
 
   let urls = []
@@ -21,12 +23,10 @@ ipcMain.on("url-channel", function (event, arg) {
 
   
   try {
-    const url = 'blocked-urls.txt' 
-    const filepath = join(__dirname, url);
     const fileContent = urlArray.join('\n');
-
-    writeFileSync( filepath, fileContent, 'utf8' )
-    console.log(`\nSaved ${urlArray.length} URLs to: ${filepath}\n`);
+    const tempFilePath = '/tmp/focusbear-blocklist.txt'; // Temporary file path for the blocklist
+    writeFileSync( tempFilePath, fileContent, 'utf8' )
+    console.log(`\nSaved ${urlArray.length} URLs to: ${tempFilePath}\n`);
     event.reply('reply-message', `Saved ${urlArray.length} URLs to file!`);
   }
   catch (error){
