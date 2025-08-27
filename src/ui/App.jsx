@@ -1,90 +1,176 @@
-import './App.css'
-import FocusBearPage from './FocusBearPage'
-import { useState, useEffect } from 'react';
+import React, { useState, useRef} from 'react';
 
 
+import TestingPage from './testing-page.jsx';
 
-function App() {
-  //hooks
-  const [urlList, seturlList] = useState('')
-  const [savedMsg, setsavedMsg] = useState('')
-  const [focusState, setfocusState] = useState(false)
+const ScratchInterface = () => {
+  const [activeTab, setActiveTab] = useState('Dashboard');
+  const iframeRef = useRef(null);
 
-  useEffect(function (){
-    window.api.onReply(function (message){
-      setsavedMsg(message)
-    })
-  }, [])
-  
+  const tabs = [
+    { id: 'Dashboard', label: 'Dashboard' },
+    { id: 'Help', label: 'Help' },
+    { id: 'Blocks', label: 'Blocks' },
+    { id: 'Settings', label: 'Settings' },
+    { id: 'Edit Habits', label: 'Edit Habits' },
+    { id: 'Motivation', label: 'Motivation' }
+  ];
 
-  function exportList(){
-    console.log("export list")
-    setsavedMsg("Saving...")
-    window.api.exportList(urlList)
-    seturlList('')
-  }
-
-  function focusSession(){
-    setfocusState(!focusState)
-    if (!focusState) {
-      setsavedMsg("Focus mode ON")
-    } else {
-      setsavedMsg("Focus mode OFF")
-    }
-  }
-
-  function settingsShow(){
-    window.api.showSettingsWindow()
-  }
-
+  const supportButtons = [
+    'Get Support',
+    'Tutorials', 
+    'Community',
+    'Report Problem'
+  ];
 
   return (
-    <>
-      {/* <FocusBearPage></FocusBearPage> */}
-      <div>
-        <h1 id="errormsg">{savedMsg}</h1>
-      </div>
-      <div className="container">
-        <img
-          src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg"
-          alt="Focus Bear Logo"
-          className="logo"
-        />
-        <h1 className="title">Hello! Welcome to Focus Bear</h1>
+    <div style={{
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#f8f9fa',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }}>
+      {/* Top Navigation */}
+      <div style={{
+        display: 'flex',
+        width: '100%',
+        hieght: '100%',
+        justifyContent: 'center',
+        backgroundColor: 'white',
+        borderBottom: '1px solid #e0e0e0',
+        padding: '10px 0'
+      }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '8px 20px',
+              margin: '0 5px',
+              border: 'none',
+              backgroundColor: activeTab === tab.id ? '#e3f2fd' : 'transparent',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              width: '100%',
+              height: '100%',
+              color: activeTab === tab.id ? '#1976d2' : '#666'
+            }}
+          >
+            <div style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: '50%',
+              backgroundColor: activeTab === tab.id ? '#1976d2' : '#666',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontSize: '14px',
+              marginBottom: '4px'
+            }}>
+              {tab.icon}
+            </div>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div className="textBoxContainer">
-        <div>
-          {/* <textarea  text></textarea> */}
-          <textarea 
-            id='urls'
-            type="text" 
-            value={urlList}
-            onChange={function (e) 
-              {seturlList(e.target.value)}
-            }
-          />
+      {/* Support Buttons */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        gap: '10px',
+        padding: '15px',
+        backgroundColor: 'white',
+        borderBottom: '1px solid #e0e0e0'
+      }}>
+        {supportButtons.map(button => (
+          <button
+            key={button}
+            style={{
+              padding: '8px 16px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              backgroundColor: 'white',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: '#333'
+            }}
+          >
+            {button}
+          </button>
+        ))}
+      </div>
+
+      {/* Main Content Area */}
+      {activeTab === 'Dashboard' ? (
+        <TestingPage />
+      ) : (
+        <div style={{
+          flex: 1,
+          padding: '20px',
+          display: 'flex',
+          justifyContent: 'center',
+          minHeight: 0 
+        }}>
+          <div style={{
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            border: '2px solid #ddd',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              width: '100%',
+              height: '60vh',
+              backgroundColor: '#f0f0f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#666',
+              fontSize: '14px'
+            }}>
+            {activeTab === 'Blocks' ? (
+              <iframe 
+                ref={iframeRef}
+                src="https://dashboard.focusbear.io/settings#timing"
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                onLoad={() => {
+                  window.addEventListener('message', handleIframeMessage);
+                  
+                  // Try CSS injection after delay
+                  setTimeout(() => {
+                    try {
+                      const iframe = iframeRef.current;
+                      const doc = iframe.contentDocument;
+                      const style = doc.createElement('style');
+                      style.textContent = `
+                        body > *:not([data-testid="timing-page-wrapper"]) { display: none !important; }
+                        .react-tabs__tab-list { display: none !important; }
+                        header, nav, .header, .nav, .sidebar { display: none !important; }
+                      `;
+                      doc.head.appendChild(style);
+                    } catch (e) {
+                      console.log('CORS prevented styling');
+                    }
+                  }, 1000);
+                }}
+              />
+            ) : `${activeTab} Content`}
+            </div>
+          </div>
         </div>
-        
+      )}
+    </div>
+  );
+};
 
-        <button onClick={exportList}>
-          Export to txt
-        </button>
-
-        <button id="focus-state" onClick={focusSession}>
-          Start Focus Session
-        </button>
-
-        <button id="settings" onClick={settingsShow}>
-          Show Settings
-        </button>
-
-      </div>
-      
-
-      
-    </>
-  )
-}
-
-export default App
+const App = ScratchInterface;
+export default App;

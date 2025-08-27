@@ -1,11 +1,15 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, session} from 'electron';
 
 
 function createWindow(url) {
+  const dashboardSession = session.fromPartition('persist:dashboard');
+
+
   const externalWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
+      session: dashboardSession,
       nodeIntegration: false, 
       contextIsolation: true,
       enableRemoteModule: false,
