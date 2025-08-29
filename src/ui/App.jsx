@@ -1,176 +1,73 @@
-import React, { useState, useRef} from 'react';
+import React, { useState, useEffect } from 'react';
+import './App.css';
+
+const App = () => {
+  const [activeTab, setActiveTab] = useState('Help');
+  const [activeSettingsTab, setActiveSettingsTab] = useState('General');
+
+  useEffect(() => {
+    if (!window.api) return;
+    window.api.updateWebviewBounds?.(activeTab);
+    
+    if (activeTab === 'Edit Habits') {
+      window.api.showFocusBearView?.();
+    } else {
+      window.api.hideFocusBearView?.();
+      
+    }
 
 
-import TestingPage from './testing-page.jsx';
+  }, [activeTab]);
 
-const ScratchInterface = () => {
-  const [activeTab, setActiveTab] = useState('Dashboard');
-  const iframeRef = useRef(null);
+  const tabs = ['Help', 'Blocks', 'Settings', 'Edit Habits', 'Motivation'];
+  const settingsTabs = ['General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
 
-  const tabs = [
-    { id: 'Dashboard', label: 'Dashboard' },
-    { id: 'Help', label: 'Help' },
-    { id: 'Blocks', label: 'Blocks' },
-    { id: 'Settings', label: 'Settings' },
-    { id: 'Edit Habits', label: 'Edit Habits' },
-    { id: 'Motivation', label: 'Motivation' }
-  ];
-
-  const supportButtons = [
-    'Get Support',
-    'Tutorials', 
-    'Community',
-    'Report Problem'
-  ];
+  const getContentText = () => {
+    if (activeTab === 'Blocks') return 'Loading Focus Bear...';
+    if (activeTab === 'Settings') return `${activeSettingsTab} Settings`;
+    return `${activeTab} Content`;
+  };
 
   return (
-    <div style={{
-      width: '100%',
-      height: '100%',
-      backgroundColor: '#f8f9fa',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden'
-    }}>
-      {/* Top Navigation */}
-      <div style={{
-        display: 'flex',
-        width: '100%',
-        hieght: '100%',
-        justifyContent: 'center',
-        backgroundColor: 'white',
-        borderBottom: '1px solid #e0e0e0',
-        padding: '10px 0'
-      }}>
+    <main className="app-container">
+      {/* Main Navigation */}
+      <nav className="main-nav">
         {tabs.map(tab => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              padding: '8px 20px',
-              margin: '0 5px',
-              border: 'none',
-              backgroundColor: activeTab === tab.id ? '#e3f2fd' : 'transparent',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              width: '100%',
-              height: '100%',
-              color: activeTab === tab.id ? '#1976d2' : '#666'
-            }}
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`nav-button ${activeTab === tab ? 'active' : ''}`}
           >
-            <div style={{
-              width: '100%',
-              height: '100%',
-              borderRadius: '50%',
-              backgroundColor: activeTab === tab.id ? '#1976d2' : '#666',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              fontSize: '14px',
-              marginBottom: '4px'
-            }}>
-              {tab.icon}
-            </div>
-            {tab.label}
+            {tab}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {/* Support Buttons */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '10px',
-        padding: '15px',
-        backgroundColor: 'white',
-        borderBottom: '1px solid #e0e0e0'
-      }}>
-        {supportButtons.map(button => (
-          <button
-            key={button}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #ddd',
-              borderRadius: '6px',
-              backgroundColor: 'white',
-              cursor: 'pointer',
-              fontSize: '12px',
-              color: '#333'
-            }}
-          >
-            {button}
-          </button>
-        ))}
-      </div>
-
-      {/* Main Content Area */}
-      {activeTab === 'Dashboard' ? (
-        <TestingPage />
-      ) : (
-        <div style={{
-          flex: 1,
-          padding: '20px',
-          display: 'flex',
-          justifyContent: 'center',
-          minHeight: 0 
-        }}>
-          <div style={{
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            border: '2px solid #ddd',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: '100%',
-              height: '60vh',
-              backgroundColor: '#f0f0f0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#666',
-              fontSize: '14px'
-            }}>
-            {activeTab === 'Blocks' ? (
-              <iframe 
-                ref={iframeRef}
-                src="https://dashboard.focusbear.io/settings#timing"
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                onLoad={() => {
-                  window.addEventListener('message', handleIframeMessage);
-                  
-                  // Try CSS injection after delay
-                  setTimeout(() => {
-                    try {
-                      const iframe = iframeRef.current;
-                      const doc = iframe.contentDocument;
-                      const style = doc.createElement('style');
-                      style.textContent = `
-                        body > *:not([data-testid="timing-page-wrapper"]) { display: none !important; }
-                        .react-tabs__tab-list { display: none !important; }
-                        header, nav, .header, .nav, .sidebar { display: none !important; }
-                      `;
-                      doc.head.appendChild(style);
-                    } catch (e) {
-                      console.log('CORS prevented styling');
-                    }
-                  }, 1000);
-                }}
-              />
-            ) : `${activeTab} Content`}
-            </div>
-          </div>
-        </div>
+      {/* Settings Sub-Navigation */}
+      {activeTab === 'Settings' && (
+        <nav className="settings-nav">
+          {settingsTabs.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveSettingsTab(tab)}
+              className={`settings-button ${activeSettingsTab === tab ? 'active' : ''}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
       )}
-    </div>
+
+      {/* Content Area */}
+      <section 
+        id="webview-container"
+        className={`content-area ${activeTab === 'Settings' ? 'with-settings' : ''} 
+        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}`}
+      >
+        {getContentText()}
+      </section>
+    </main>
   );
 };
 
-const App = ScratchInterface;
 export default App;
