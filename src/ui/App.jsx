@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import './distracting-sites'
+import './Consistent-colors.css'
 import Distracting_sites_page from './distracting-sites';
+import { secureHeapUsed } from 'crypto';
 
 const App = function() {
   const [activeTab, setActiveTab] = useState('Help');
@@ -49,7 +51,12 @@ const App = function() {
       {/* /* {for settings super distracting sites tab} */ }
       {console.log('activeTab:', activeTab, 'activeSettingsTab:', activeSettingsTab)}
       {(activeTab === 'Settings' && activeSettingsTab === 'Super Distracting Sites') && (
-        <Distracting_sites_page />
+          <section className={`content-area light-orange `} style={{top: '140px'}}> 
+             <Distracting_sites_page />
+          </section>
+
+         
+       
       )}
 
 
@@ -75,11 +82,9 @@ const App = function() {
         // For Settings Tabs
         ${activeTab === 'Settings' ? 'with-settings' : ''} 
         ${activeSettingsTab === 'Super Distracting Sites' ? 'hideArea' : ''} 
-
         ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
         ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
-        
-    
+      
         `}
         
       >
