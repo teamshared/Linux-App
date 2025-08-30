@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import './distracting-sites'
+import Distracting_sites_page from './distracting-sites';
 
-const App = () => {
+const App = function() {
   const [activeTab, setActiveTab] = useState('Help');
   const [activeSettingsTab, setActiveSettingsTab] = useState('General');
 
@@ -43,6 +45,14 @@ const App = () => {
         ))}
       </nav>
 
+
+      {/* /* {for settings super distracting sites tab} */ }
+      {console.log('activeTab:', activeTab, 'activeSettingsTab:', activeSettingsTab)}
+      {(activeTab === 'Settings' && activeSettingsTab === 'Super Distracting Sites') && (
+        <Distracting_sites_page />
+      )}
+
+
       {/* Settings Sub-Navigation */}
       {activeTab === 'Settings' && (
         <nav className="settings-nav">
@@ -59,10 +69,19 @@ const App = () => {
       )}
 
       {/* Content Area */}
-      <section 
+      <section
         id="webview-container"
-        className={`content-area ${activeTab === 'Settings' ? 'with-settings' : ''} 
-        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}`}
+        className={`content-area 
+        // For Settings Tabs
+        ${activeTab === 'Settings' ? 'with-settings' : ''} 
+        ${activeSettingsTab === 'Super Distracting Sites' ? 'hideArea' : ''} 
+
+        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
+        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
+        
+    
+        `}
+        
       >
         {getContentText()}
       </section>
