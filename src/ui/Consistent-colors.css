@@ -1,7 +1,8 @@
 .light-orange {
-    background-color: rgb(255 237 213 / var(--tw-bg-opacity, 1));
+    background-color: rgb(255, 248, 236);
 }
 
 .textbox {
     background-color: white;
+    color: black;
 }
