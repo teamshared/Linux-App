@@ -1,27 +1,16 @@
-import React, {useState} from 'react';
 
-const FocusBearPage = () => {
+const SystemTray = function(){
 
-  const [greeting, setGreeting] = useState('');
+  
 
- 
 
   return (
-    <div className="container">
-      <img
-        src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg"
-        alt="Focus Bear Logo"
-        className="logo"
-      />
-
-      <h1 className="title">{greeting}</h1>
-      
-    <button  className="button">
-        Show Greeting
-    </button>
-      
+    <div style={{ padding: '20px', backgroundColor: '#f5f5f5', height: '100vh' }}>
+      <h3>Focus Bear Tray</h3>
+      <button>Start Focus Session</button>
+      <button>Settings</button>
     </div>
   );
 };
 
-export default FocusBearPage;
+export default SystemTray;

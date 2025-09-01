@@ -4,7 +4,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, WebContentsView, session } from "electron";
 import { Menu, Tray } from 'electron'
-import {createTray} from "./system-tray.js"
+import {createTray} from "./tray-handler.js"
 import createWindow from './load-webview.js';
 
 import './Blocker.js' 
@@ -28,7 +28,7 @@ function getWebviewContainerBounds() {
 
 app.on("ready", function(){
 
-    tray = createTray()
+    
 
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
@@ -40,6 +40,7 @@ app.on("ready", function(){
         },
         devTools: true,
     });
+    tray = createTray(mainWindow)
     
     mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'))
     mainWindow.on("ready-to-show", mainWindow.show)

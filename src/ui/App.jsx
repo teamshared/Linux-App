@@ -1,9 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import './distracting-sites'
+import './Consistent-colors.css'
+import Distracting_sites_page from './distracting-sites';
+import { secureHeapUsed } from 'crypto';
+import SystemTray from './system-tray';
 
-const App = () => {
+const App = function() {
   const [activeTab, setActiveTab] = useState('Help');
   const [activeSettingsTab, setActiveSettingsTab] = useState('General');
+  const [isTrayMode, setIsTrayMode] = useState(false); // ADD THIS
+
+   useEffect(() => {
+    const checkTrayMode = () => {
+      setIsTrayMode(window.location.hash === '#tray');
+    };
+    
+    checkTrayMode(); // Check on mount
+    window.addEventListener('hashchange', checkTrayMode);
+    
+    return () => window.removeEventListener('hashchange', checkTrayMode);
+    }, []);
+
+    // ADD: Return tray content if in tray mode
+    if (isTrayMode) {
+      return <SystemTray />; // Create this component
+    }
+
 
   useEffect(() => {
     if (!window.api) return;
@@ -43,6 +66,19 @@ const App = () => {
         ))}
       </nav>
 
+
+      {/* /* {for settings super distracting sites tab} */ }
+      {console.log('activeTab:', activeTab, 'activeSettingsTab:', activeSettingsTab)}
+      {(activeTab === 'Settings' && activeSettingsTab === 'Super Distracting Sites') && (
+          <section className={`content-area light-orange `} style={{top: '140px'}}> 
+             <Distracting_sites_page />
+          </section>
+
+         
+       
+      )}
+
+
       {/* Settings Sub-Navigation */}
       {activeTab === 'Settings' && (
         <nav className="settings-nav">
@@ -59,10 +95,17 @@ const App = () => {
       )}
 
       {/* Content Area */}
-      <section 
+      <section
         id="webview-container"
-        className={`content-area ${activeTab === 'Settings' ? 'with-settings' : ''} 
-        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}`}
+        className={`content-area 
+        // For Settings Tabs
+        ${activeTab === 'Settings' ? 'with-settings' : ''} 
+        ${activeSettingsTab === 'Super Distracting Sites' ? 'hideArea' : ''} 
+        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
+        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
+      
+        `}
+        
       >
         {getContentText()}
       </section>
