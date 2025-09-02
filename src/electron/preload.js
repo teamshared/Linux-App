@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, app } = require('electron');
 
 
 const API = {
@@ -15,5 +15,8 @@ const API = {
     hideFocusBearView: function() {ipcRenderer.send('hide-focus-bear-view')},
     updateWebviewBounds: function (tabName) {ipcRenderer.send('update-webview-bounds', tabName)},
 
+    showPreferences: function() { return ipcRenderer.send('show-preferences'); },
+
+    showQuitDialog: function(ExitFlag) {ipcRenderer.send("quit-channel", ExitFlag)}
   }
 contextBridge.exposeInMainWorld('api', API);

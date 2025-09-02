@@ -9,19 +9,21 @@ body {
     width: 280px;
     background: #f5f5f5;
     padding: 0;
+    overflow: hidden;
 }
 
 .header {
     background: white;
-    padding: 15px;
+    padding: 10px;
     text-align: center;
     border-bottom: 1px solid #e0e0e0;
 }
 
 .logo {
-    font-size: 18px;
-    font-weight: 600;
-    color: #333;
+    width: 290px;
+    height: 40px;
+    margin: 0 auto;
+    
 }
 
 .mode-toggle {
@@ -92,8 +94,9 @@ body {
 .info-row {
     display: flex;
     align-items: center;
-    margin: 8px 0;
-    font-size: 12px;
+    margin: 16px auto;
+    font-size: 13px;
+
 }
 
 .icons {

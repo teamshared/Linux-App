@@ -7,7 +7,7 @@ import { app, Menu, Tray, BrowserWindow, screen } from 'electron'
 let trayWindow;
 
 
-const win_width = 300;
+const win_width = 280;
 const win_height = 500;
 
 function showWindow(mainWindow){
@@ -27,11 +27,16 @@ function showWindow(mainWindow){
         show: false,
         frame: false,
         alwaysOnTop: true,
-        resizable: true,
+        resizable: false,
         skipTaskbar: true,
         type: 'toolbar',
         parent: mainWindow,  // Add this line
         modal: false,   
+        webPreferences: {  // Add this
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: join(app.getAppPath(), "./src/electron/preload.js")
+        }
     });
     console.log(`Bounds X: ${primaryDisplay.bounds.x} disp width: ${width}`)
     console.log(`Bounds Y: ${primaryDisplay.bounds.y} disp width: ${height}`)
@@ -45,14 +50,7 @@ function showWindow(mainWindow){
     trayWindow.on('closed', function () {
         trayWindow = null;
     });
-
-    const trayPath = join(app.getAppPath(), "./src/ui/tray.html");
-
-    trayWindow.loadFile(trayPath).catch(err => {
-        console.error('Failed to load tray file:', err);
-        // Fallback - show the window anyway to see if it's a loading issue
-        trayWindow.show();
-    });
+    trayWindow.loadFile(join(app.getAppPath(), './src/ui/tray.html'));
     
     trayWindow.webContents.once('dom-ready', function() {
         console.log('Tray DOM ready');
@@ -63,25 +61,15 @@ function showWindow(mainWindow){
 
 function createTray(mainWindow){
     let tray = new Tray((join(app.getAppPath(), "./public/bear-icon.png" )))
-    
 
-    const contextMenu = Menu.buildFromTemplate([
-    { label: 'Item1', type: 'radio' },
-    { label: 'Item2', type: 'radio' },
-    { label: 'Item3', type: 'radio', checked: true },
-    { label: 'Item4', type: 'radio' }
-    ])
     tray.setToolTip('Focus Bear')
-    tray.setContextMenu(contextMenu)
 
     tray.on('click', function (event, bounds) {
-        
         if (trayWindow && trayWindow.isVisible()) {
             trayWindow.destroy()
-
         } 
         else {
-            showWindow();
+            showWindow(mainWindow);
         }
     });
 
