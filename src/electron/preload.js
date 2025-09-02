@@ -4,7 +4,6 @@ const { contextBridge, ipcRenderer, app } = require('electron');
 const API = {
 
     exportList: function(urls){return ipcRenderer.send("url-channel", urls)},
-    showSettingsWindow: function(){return ipcRenderer.send("show-settings");},
 
     onReply: function(callback) {
         ipcRenderer.on('reply-message', function (event, message) {
@@ -17,6 +16,6 @@ const API = {
 
     showPreferences: function() { return ipcRenderer.send('show-preferences'); },
 
-    showQuitDialog: function(ExitFlag) {ipcRenderer.send("quit-channel", ExitFlag)}
+    showQuitDialog: function() {ipcRenderer.send("quit-channel")}
   }
 contextBridge.exposeInMainWorld('api', API);

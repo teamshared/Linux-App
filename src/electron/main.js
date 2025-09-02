@@ -5,7 +5,6 @@ const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, WebContentsView, session } from "electron";
 import { Menu, Tray } from 'electron'
 import {createTray} from "./tray-handler.js"
-import createWindow from './load-webview.js';
 
 import './Blocker.js' 
 
@@ -145,11 +144,6 @@ app.on("ready", function(){
                 }
             }
         }
-    });
-
-    ipcMain.on('show-settings', function() {
-        console.log("Received 'show-settings' message. Opening settings window.");
-        createWindow("https://dashboard.focusbear.io/");
     });
 
 
