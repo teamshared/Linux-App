@@ -2,7 +2,7 @@
 const trayState = {
     habitsCompleted: false,
     focusSessionActive: false,
-    subscriptionActive: false
+    // subscriptionActive: false
 };
 
 function updateUI() {
@@ -15,20 +15,14 @@ function updateUI() {
 
     // Focus Session Button - change text and color
     if (trayState.focusSessionActive) {
-        focusBtn.textContent = '⏸️ Stop Focus Session';
+        focusBtn.textContent = 'Stop Focus Session';
         focusBtn.className = 'tray-button active';
     } else {
-        focusBtn.textContent = '⏰ Start Focus Session';
+        focusBtn.textContent = 'Start Focus Session';
         focusBtn.className = 'tray-button primary';
     }
 
-    // Subscription Button - change based on status
-    if (trayState.subscriptionActive) {
-        subBtn.style.display = 'none';
-    } else {
-        subBtn.style.display = 'block';
-        subBtn.innerHTML = '💰 Upgrade Now<br><small>Your subscription has expired</small>';
-    }
+
 }
 
 // Button event handlers
@@ -40,7 +34,7 @@ function resumeHabits() {
 }
 
 function openPreferences() {
-    window.api?.showSettings?.();
+    window.api?.showPreferences?.();
 }
 
 function openTodoList() {
@@ -54,7 +48,7 @@ function toggleFocusSession() {
 }
 
 function quit() {
-    window.api?.showQuitDialog?.();
+    window.api.showQuitDialog();
 }
 
 function upgrade() {

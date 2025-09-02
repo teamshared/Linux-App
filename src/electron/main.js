@@ -12,6 +12,7 @@ import './Blocker.js'
 let tray = null
 let focusBearView = null
 let mainWindow = null;
+let exitflag = false;
 
 function getWebviewContainerBounds() {
     const bounds = mainWindow.getBounds();
@@ -27,13 +28,11 @@ function getWebviewContainerBounds() {
 }
 
 app.on("ready", function(){
-
-    
-
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
         height: 850,
         width: 1000,
+        show: false,
         webviewTag: true,
         webPreferences: {
             preload: join(app.getAppPath(), "/src/electron/preload.js")
@@ -43,7 +42,6 @@ app.on("ready", function(){
     tray = createTray(mainWindow)
     
     mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'))
-    mainWindow.on("ready-to-show", mainWindow.show)
 
     // Handle window resize to reposition the webview
     mainWindow.on('resize', () => {
@@ -51,6 +49,16 @@ app.on("ready", function(){
             const containerBounds = getWebviewContainerBounds();
             focusBearView.setBounds(containerBounds);
         }
+    });
+
+    mainWindow.on('close', function(event) {
+
+        if (exitflag){
+            return 
+        }
+        event.preventDefault(); 
+        mainWindow.hide();      
+        
     });
 
     ipcMain.on('show-focus-bear-view', function (){
@@ -143,4 +151,48 @@ app.on("ready", function(){
         console.log("Received 'show-settings' message. Opening settings window.");
         createWindow("https://dashboard.focusbear.io/");
     });
+
+
+
+    ipcMain.on('show-preferences', function() {
+        if (mainWindow) {
+            // Resize to preferences size
+            mainWindow.setSize(1000, 850);
+            mainWindow.center(); // Center on screen after resize
+            mainWindow.show();
+            mainWindow.focus();
+            
+            mainWindow.webContents.executeJavaScript(`
+                window.location.hash = '#preferences';
+            `);
+        }
+    });
 });
+
+
+
+ipcMain.on('quit-channel', function() {
+    exitflag = true
+    app.quit();
+    console.log("bruh gaming")
+        
+});
+
+app.on('window-all-closed', function() {
+    if (exitflag) {
+        console.log("got here")
+    }
+    else{
+        return
+    }
+});
+
+
+app.on('will-quit', function() {
+    exitflag = false;
+});
+
+
+
+
+

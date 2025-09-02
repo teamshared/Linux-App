@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './Consistent-colors.css'
+import './styles/Consistent-colors.css'
 
 const Distracting_sites_page = function(){
     return (
