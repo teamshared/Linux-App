@@ -174,13 +174,11 @@ app.on("ready", function(){
 ipcMain.on('quit-channel', function() {
     exitflag = true
     app.quit();
-    console.log("bruh gaming")
         
 });
 
 app.on('window-all-closed', function() {
     if (exitflag) {
-        console.log("got here")
     }
     else{
         return

@@ -3,7 +3,6 @@ import './distracting-sites'
 import './styles/preferences.css';
 import './styles/Consistent-colors.css'
 import Distracting_sites_page from './distracting-sites';
-import { secureHeapUsed } from 'crypto';
 
 const PreferencesPage = function() {
   const [activeTab, setActiveTab] = useState('Help');
