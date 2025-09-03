@@ -4,6 +4,7 @@ import './styles/preferences.css';
 import './styles/Consistent-colors.css'
 import Distracting_sites_page from './distracting-sites';
 import MotivationPage from './motivation';
+import BlockingSchedule from './blocking-schedule'
 
 
 const PreferencesPage = function() {
@@ -19,7 +20,11 @@ const PreferencesPage = function() {
 
 
     if (activeTab === 'Edit Habits') {
-      window.api.showWebView('edit_habits');
+      window.api.showWebView('edit_habits', 'Edit Habits');
+    }
+
+    if (activeTab === 'Blocks' && activeBlocksTab === 'Blocking Schedule') {
+      window.api.showWebView('edit_habits', 'Blocking Schedule');
     }
     // if (activeTab === 'Motivation') {
     //   window.api.showWebView('motivation');
@@ -28,13 +33,13 @@ const PreferencesPage = function() {
     if (!window.api) return;
     window.api.updateWebviewBounds?.(activeTab);
 
-  }, [activeTab]);
+  }, [activeTab, activeBlocksTab]);
 
   const tabs = ['Help', 'Blocks', 'Settings', 'Edit Habits', 'Motivation'];
   const settingsTabs = ['General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
   const blocksTabs = ['Blocking Schedule', 'Super Distracting Sites'];
 
-  const getContentText = () => {
+  const getContentText = function(){
     if (activeTab === 'Blocks') return 'Loading Focus Bear...';
     if (activeTab === 'Settings') return `${activeSettingsTab} Settings`;
     return `${activeTab} Content`;
@@ -75,10 +80,7 @@ const PreferencesPage = function() {
 
       )}
 
-
-      {/* Blocks Tab Navigation */}
-
-      {/* Blocks Tab Sub-Navigation */}
+      {/*Sub-Navigation BLOCKS TAB*/}
       {activeTab === 'Blocks' && (
         <nav className="blocks-nav">
           {blocksTabs.map(tab => (
@@ -92,15 +94,17 @@ const PreferencesPage = function() {
           ))}
         </nav>
       )}
-
       {/* for Super Distracting Sites in BLOCKS TAB */}
       {(activeTab === 'Blocks' && activeBlocksTab === 'Super Distracting Sites') && (
         <div className='content-area with-subnav'>
           <Distracting_sites_page />
         </div>
-        
-        
-
+      )}
+      {/* for Blocking Schedule in BLOCKS TAB */}
+      {(activeTab === 'Blocks' && activeBlocksTab === 'Blocking Schedule') && (
+        <div className='content-area with-subnav'>
+          <BlockingSchedule />
+        </div>
       )}
 
 

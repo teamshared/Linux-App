@@ -65,6 +65,17 @@ app.on("ready", function(){
 
         const webView = createWebView({ ...config, mainWindow });
         const bounds = getWebviewContainerBounds();
+        console.log(tabName)
+        switch(tabName){
+            case "Blocking Schedule":
+                bounds.height = bounds.height * 0.46  //reduce the height of the webview window to 56%
+            case "Edit Habits":
+                break;
+            default:
+                break;
+        }
+        
+        
         showWebView(webViewId, mainWindow, bounds);
     });
 
