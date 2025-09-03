@@ -3,8 +3,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, WebContentsView, session } from "electron";
-import { Menu, Tray } from 'electron'
 import {createTray} from "./tray-handler.js"
+import { createWebView, showWebView, hideWebView, webViewConfigs } from './webview-handler.js';
 
 import './Blocker.js' 
 
@@ -42,7 +42,6 @@ app.on("ready", function(){
     
     mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'))
 
-    // Handle window resize to reposition the webview
     mainWindow.on('resize', () => {
         if (focusBearView && mainWindow.contentView) {
             const containerBounds = getWebviewContainerBounds();
@@ -60,93 +59,23 @@ app.on("ready", function(){
         
     });
 
-    ipcMain.on('show-focus-bear-view', function (){
-        if (!focusBearView) {
-            focusBearView = new WebContentsView({
-                webPreferences: {
-                    nodeIntegration: false,
-                    contextIsolation: true,
-                    session: session.fromPartition('persist:dashboard')
-                }
-            });
+    ipcMain.on('show-webview', function(event, webViewId, tabName) {
+        const config = webViewConfigs[webViewId];
+        if (!config) return;
 
-            focusBearView.webContents.loadURL('https://dashboard.focusbear.io/settings#timing');
-            
-            // Wait longer and try multiple times
-            focusBearView.webContents.once('dom-ready', () => {
-                setTimeout(() => {
-                    // Less aggressive CSS - just hide navigation first
-                    focusBearView.webContents.insertCSS(`
-                        /* Hide only navigation elements first */
-                      
-                       
-                        nav, header, .nav, .header, .sidebar, .div.section {
-                            display: none !important;
-                        }
-
-                        /* Hide footer content */
-                        [data-testid*="footer-website-link"], [data-testid*="footer-logo"], [data-testid*="footer-terms-link"],
-                        [data-testid*="footer-privacy-link"], .container, [aria-label*="Chat Widget"]
-                        {
-                            display: none !important;
-                        }
-
-                        /* Make content fill the container */
-                        body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                        }
-                    `);
-                }, 2000);
-                
-                // Wait longer for React to render, then target timing content
-                setTimeout(() => {
-                    focusBearView.webContents.insertCSS(`
-                        /* Show only the active tab panel */
-                        [data-testid*="settings-tabs-container"] {
-                            display: block !important;
-                        }
-                    `);
-                }, 3000); // Wait 3 seconds for React to fully load
-            });
-        }
-        
-        // Add the view as a child
-        mainWindow.contentView.addChildView(focusBearView);
-        
-        // Position it inside the webview container
-        const containerBounds = getWebviewContainerBounds();
-        focusBearView.setBounds(containerBounds);
+        const webView = createWebView({ ...config, mainWindow });
+        const bounds = getWebviewContainerBounds();
+        showWebView(webViewId, mainWindow, bounds);
     });
 
-    ipcMain.on('hide-focus-bear-view', function() {
-        if (focusBearView && mainWindow.contentView) {
-            mainWindow.contentView.removeChildView(focusBearView);
-        }
+    ipcMain.on('hide-webview', function(event, webViewId) {
+        hideWebView(webViewId, mainWindow);
     });
 
-    // New IPC handler for updating webview bounds when React component mounts/unmounts
-    ipcMain.on('update-webview-bounds', function(event, tabName) {
-        if (focusBearView && mainWindow.contentView) {
-            if (tabName === 'Blocks') {
-                // Show and position the webview
-                const containerBounds = getWebviewContainerBounds();
-                focusBearView.setBounds(containerBounds);
-                
-                // Make sure it's visible
-                if (!mainWindow.contentView.children.includes(focusBearView)) {
-                    mainWindow.contentView.addChildView(focusBearView);
-                }
-            } else {
-                // Hide the webview for other tabs
-                if (mainWindow.contentView.children.includes(focusBearView)) {
-                    mainWindow.contentView.removeChildView(focusBearView);
-                }
-            }
-        }
+    ipcMain.on('update-webview-bounds', function(event, webViewId, tabName) {
+        const bounds = getWebviewContainerBounds();
+        showWebView(webViewId, mainWindow, bounds);
     });
-
-
 
     ipcMain.on('show-preferences', function() {
         if (mainWindow) {
