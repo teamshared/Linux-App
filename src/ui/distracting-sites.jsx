@@ -15,7 +15,7 @@ const Distracting_sites_page = function(){
           </p>
           <br /><br />
 
-          <textarea className='textbox'></textarea>
+          <textarea readOnly={true}className='textbox'></textarea>
           <br />
 
           <hr />
