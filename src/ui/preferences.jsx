@@ -3,28 +3,36 @@ import './distracting-sites'
 import './styles/preferences.css';
 import './styles/Consistent-colors.css'
 import Distracting_sites_page from './distracting-sites';
+import MotivationPage from './motivation';
+
 
 const PreferencesPage = function() {
   const [activeTab, setActiveTab] = useState('Help');
   const [activeSettingsTab, setActiveSettingsTab] = useState('General');
+  const [activeBlocksTab, setActiveBlocksTab] = useState('Blocking Schedule');
 
 
   useEffect(() => {
+
+    window.api.hideWebView('edit_habits');
+    window.api.hideWebView('motivation');
+
+
+    if (activeTab === 'Edit Habits') {
+      window.api.showWebView('edit_habits');
+    }
+    // if (activeTab === 'Motivation') {
+    //   window.api.showWebView('motivation');
+    // }  
+
     if (!window.api) return;
     window.api.updateWebviewBounds?.(activeTab);
-    
-    if (activeTab === 'Edit Habits') {
-      window.api.showFocusBearView?.();
-    } else {
-      window.api.hideFocusBearView?.();
-      
-    }
-
 
   }, [activeTab]);
 
   const tabs = ['Help', 'Blocks', 'Settings', 'Edit Habits', 'Motivation'];
   const settingsTabs = ['General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
+  const blocksTabs = ['Blocking Schedule', 'Super Distracting Sites'];
 
   const getContentText = () => {
     if (activeTab === 'Blocks') return 'Loading Focus Bear...';
@@ -51,12 +59,48 @@ const PreferencesPage = function() {
       {/* /* {for settings super distracting sites tab} */ }
       {console.log('activeTab:', activeTab, 'activeSettingsTab:', activeSettingsTab)}
       {(activeTab === 'Settings' && activeSettingsTab === 'Super Distracting Sites') && (
-          <section className={`content-area light-orange `} style={{top: '140px'}}> 
+          <section className={`content-area with-subnav light-orange `}> 
              <Distracting_sites_page />
           </section>
 
          
        
+      )}
+
+      {/*Motivation Tab */}
+      {activeTab === 'Motivation' && (
+        <div className='content-area'>
+            <MotivationPage />
+        </div>  
+
+      )}
+
+
+      {/* Blocks Tab Navigation */}
+
+      {/* Blocks Tab Sub-Navigation */}
+      {activeTab === 'Blocks' && (
+        <nav className="blocks-nav">
+          {blocksTabs.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveBlocksTab(tab)}
+              className={`blocks-button ${activeBlocksTab === tab ? 'active' : ''}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {/* for Super Distracting Sites in BLOCKS TAB */}
+      {(activeTab === 'Blocks' && activeBlocksTab === 'Super Distracting Sites') && (
+        <div className='content-area with-subnav'>
+          <Distracting_sites_page />
+        </div>
+        
+        
+
       )}
 
 
@@ -75,15 +119,24 @@ const PreferencesPage = function() {
         </nav>
       )}
 
+
+    
+
       {/* Content Area */}
       <section
         id="webview-container"
         className={`content-area 
+
         // For Settings Tabs
-        ${activeTab === 'Settings' ? 'with-settings' : ''} 
+        ${activeTab === 'Settings' ? 'with-subnav' : ''} 
         ${activeSettingsTab === 'Super Distracting Sites' ? 'hideArea' : ''} 
-        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
-        ${activeTab === 'Edit Habits' ? 'hideArea' : ''}
+
+        //For Displaying the Webviews, Motivation and Edit Habits Primary Tabs
+        ${activeTab === 'Edit Habits' | 'Motivation' ? 'hideArea' : ''}
+
+        //For Blocking Sub Navigation
+        ${activeTab === 'Blocks' ? 'with-subnav' : ''}
+        ${activeBlocksTab == 'Super Distracting Sites' || 'Blocking Schedule' ? 'hideArea' : ''}
       
         `}
         

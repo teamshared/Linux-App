@@ -10,9 +10,9 @@ const API = {
         callback(message);})
     },
 
-    showFocusBearView: function() {ipcRenderer.send('show-focus-bear-view')},
-    hideFocusBearView: function() {ipcRenderer.send('hide-focus-bear-view')},
-    updateWebviewBounds: function (tabName) {ipcRenderer.send('update-webview-bounds', tabName)},
+    showWebView: function(id, tab) { return ipcRenderer.send('show-webview', id, tab); },
+    hideWebView: function(id) { return ipcRenderer.send('hide-webview', id); },
+    updateWebviewBounds: function(id, tab) { return ipcRenderer.send('update-webview-bounds', id, tab); },
 
     showPreferences: function() { return ipcRenderer.send('show-preferences'); },
 

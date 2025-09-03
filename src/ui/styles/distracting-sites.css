@@ -1,3 +1,28 @@
 #distracting-sites{
     padding: 0;
 }
+
+
+hr {
+    margin: 0px 0px 5px 0px;
+}
+
+.textbox {
+    width: 100%;
+    margin: 0 auto;
+    height: 300px;
+}
+
+.ds-button{
+    padding: 10px 12px 10px 12px;
+    margin: 0 auto;
+    background-color: white;
+    font-size: small;
+    color: black;
+    border: 1px solid #ff9500;
+}
+
+#url-button{
+    float: right;
+    background-color: #ffe0b5;
+}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './styles/Consistent-colors.css'
+import './styles/distracting-sites.css'
 
 const Distracting_sites_page = function(){
     return (
@@ -14,9 +15,12 @@ const Distracting_sites_page = function(){
           </p>
           <br /><br />
 
-          <textarea style={{width: '80%', margin: '0 auto', height: '300px'}} className='textbox'></textarea>
+          <textarea className='textbox'></textarea>
           <br />
-          <button>Add URL</button>
+
+          <hr />
+          <button id='url-button'className='ds-button'>Add URL</button>
+          <button id='remove-button'className='ds-button'>Remove</button>
         </section>
     );
 }

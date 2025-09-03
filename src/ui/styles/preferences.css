@@ -127,6 +127,8 @@ button{
   background-color: #e8e8e8;
 }
 
+
+ /* --- FOR THE SETTINGS SUB NAVIGATION  */
 .settings-nav {
   position: fixed;
   top: 60px;
@@ -167,6 +169,54 @@ button{
 .settings-button.active:hover {
   background-color: #666;
 }
+/* ------ */
+
+
+
+ /* --- FOR THE BLOCKS TAB SUB NAVIGATION  */
+.blocks-nav {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  height: 60px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.blocks-button {
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  background-color: white;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #333;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.blocks-button:hover {
+  background-color: #f8f8f8;
+}
+
+.blocks-button.active {
+  background-color: #666;
+  color: white;
+}
+
+.blocks-button.active:hover {
+  background-color: #666;
+}
+/* ------ */
+
+
 
 .content-area {
   position: absolute;
@@ -184,7 +234,7 @@ button{
   color: #666;
 }
 
-.content-area.with-settings {
+.content-area.with-subnav{
   top: 140px; /* 60px nav + 60px settings + 20px padding */
 }
 
