@@ -20,7 +20,11 @@ const PreferencesPage = function() {
 
 
     if (activeTab === 'Edit Habits') {
-      window.api.showWebView('edit_habits');
+      window.api.showWebView('edit_habits', 'Edit Habits');
+    }
+
+    if (activeTab === 'Blocks' && activeBlocksTab === 'Blocking Schedule') {
+      window.api.showWebView('edit_habits', 'Blocking Schedule');
     }
     // if (activeTab === 'Motivation') {
     //   window.api.showWebView('motivation');
@@ -29,13 +33,13 @@ const PreferencesPage = function() {
     if (!window.api) return;
     window.api.updateWebviewBounds?.(activeTab);
 
-  }, [activeTab]);
+  }, [activeTab, activeBlocksTab]);
 
   const tabs = ['Help', 'Blocks', 'Settings', 'Edit Habits', 'Motivation'];
   const settingsTabs = ['General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
   const blocksTabs = ['Blocking Schedule', 'Super Distracting Sites'];
 
-  const getContentText = () => {
+  const getContentText = function(){
     if (activeTab === 'Blocks') return 'Loading Focus Bear...';
     if (activeTab === 'Settings') return `${activeSettingsTab} Settings`;
     return `${activeTab} Content`;
