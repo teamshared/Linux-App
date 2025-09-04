@@ -1,20 +1,21 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, app } = require('electron');
+
 
 const API = {
 
-
-    //Get Lines
-    exportList: function(urls){
-        return ipcRenderer.send("url-channel", urls) 
-    },
+    exportList: function(urls){return ipcRenderer.send("url-channel", urls)},
 
     onReply: function(callback) {
         ipcRenderer.on('reply-message', function (event, message) {
-        callback(message);
-    });
+        callback(message);})
+    },
+
+    showWebView: function(id, tab) { return ipcRenderer.send('show-webview', id, tab); },
+    hideWebView: function(id) { return ipcRenderer.send('hide-webview', id); },
+    updateWebviewBounds: function(id, tab) { return ipcRenderer.send('update-webview-bounds', id, tab); },
+
+    showPreferences: function() { return ipcRenderer.send('show-preferences'); },
+
+    showQuitDialog: function() {ipcRenderer.send("quit-channel")}
   }
-};
-
-
-
 contextBridge.exposeInMainWorld('api', API);

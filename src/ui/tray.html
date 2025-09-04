@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="styles/tray.css">
+</head>
+<body>
+    <div class="header">
+        <img
+            src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg"
+            alt="Focus Bear Logo"
+            class="logo"
+        />
+    </div>
+    
+    <div class="mode-toggle">
+        <button class="mode-btn geek"> Geek Mode</button>
+        <button class="mode-btn simple"> Simple Mode</button>
+    </div>
+    
+    <div class="button-list">
+        <button id="resume-habits" class="tray-button">
+            Resume Habits
+        </button>
+        
+        <button class="tray-button" onclick="openPreferences()">
+            ⚙️ Preferences
+        </button>
+        
+        <div class="info-row">
+            <span>Limited blocking</span>
+        </div>
+        
+        <button class="tray-button" onclick="openTodoList()">
+            To Do List
+        </button>
+        
+        <button id="focus-session" class="tray-button primary">
+            Start Focus Session
+        </button>
+        
+        <button class="tray-button secondary" onclick="quit()">
+            Quit
+        </button>
+        
+        <button id="subscription" class="tray-button secondary">
+      
+            Subscription Button
+     
+        </button>
+    </div>
+    
+    <script src="../electron/tray.js"></script>
+</body>
+</html>
