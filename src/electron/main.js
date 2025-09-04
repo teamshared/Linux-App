@@ -71,6 +71,8 @@ app.on("ready", function(){
                 bounds.height = bounds.height * 0.46  //reduce the height of the webview window to 56%
             case "Edit Habits":
                 break;
+            case "Motivation":
+                break;
             default:
                 break;
         }

@@ -26,9 +26,9 @@ const PreferencesPage = function() {
     if (activeTab === 'Blocks' && activeBlocksTab === 'Blocking Schedule') {
       window.api.showWebView('edit_habits', 'Blocking Schedule');
     }
-    // if (activeTab === 'Motivation') {
-    //   window.api.showWebView('motivation');
-    // }  
+    if (activeTab === 'Motivation') {
+      window.api.showWebView('motivation');
+    }  
 
     if (!window.api) return;
     window.api.updateWebviewBounds?.(activeTab);
@@ -72,13 +72,13 @@ const PreferencesPage = function() {
        
       )}
 
-      {/*Motivation Tab */}
+      {/* Motivation Tab
       {activeTab === 'Motivation' && (
         <div className='content-area'>
             <MotivationPage />
         </div>  
 
-      )}
+      )} */}
 
       {/*Sub-Navigation BLOCKS TAB*/}
       {activeTab === 'Blocks' && (
@@ -136,11 +136,11 @@ const PreferencesPage = function() {
         ${activeSettingsTab === 'Super Distracting Sites' ? 'hideArea' : ''} 
 
         //For Displaying the Webviews, Motivation and Edit Habits Primary Tabs
-        ${activeTab === 'Edit Habits' | 'Motivation' ? 'hideArea' : ''}
+        ${activeTab === 'Edit Habits' || activeTab === 'Motivation' ? 'hideArea' : ''}
 
         //For Blocking Sub Navigation
         ${activeTab === 'Blocks' ? 'with-subnav' : ''}
-        ${activeBlocksTab == 'Super Distracting Sites' || 'Blocking Schedule' ? 'hideArea' : ''}
+        ${activeBlocksTab === 'Super Distracting Sites' || activeBlocksTab == 'Blocking Schedule' ? 'hideArea' : ''}
       
         `}
         

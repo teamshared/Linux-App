@@ -51,18 +51,25 @@ export function hideWebView(id, mainWindow) {
 export const webViewConfigs = {
     'edit_habits': {
         id: 'edit_habits',
-        url: 'https://dashboard.focusbear.io/settings#timing',
+        url: 'https://dashboard.focusbear.io/settings',
         cssRules: {
             initial: `
+                /* get rid of header */
                 nav, header, .nav, .header, .sidebar, .div.section {
                     display: none !important;
                 }
-                [data-testid*="footer-website-link"], [data-testid*="footer-logo"] {
+
+                /* get rid of footer */
+                [data-testid*="footer-website-link"], [data-testid*="footer-logo"], [data-testid="footer-privacy-link"],[data-testid="footer-terms-link"], p.w-full.text-gray-500.text-sm.text-center{
                     display: none !important;
                 }
+            
+                /* get rid of chat widget */
+                [aria-label="Chat Widget"]{display: none !important;} 
                 body { margin: 0 !important; padding: 0 !important; }
             `,
             secondary: `
+                /* Show only the tabs */
                 [data-testid*="settings-tabs-container"] {
                     display: block !important;
                 }
@@ -71,10 +78,29 @@ export const webViewConfigs = {
     },
     'motivation': {
         id: 'motivation',
-        url: 'https://example.com',
+        url: 'https://dashboard.focusbear.io/stats',
         cssRules: {
-            initial: `/* Different CSS for other service */`,
-            secondary: `/* More CSS rules */`
+            initial: `
+                /* get rid of header */
+                nav, header, .nav, .header, .sidebar, .div.section {
+                    display: none !important;
+                }
+
+                /* get rid of footer */
+                [data-testid*="footer-website-link"], [data-testid*="footer-logo"], [data-testid="footer-privacy-link"],[data-testid="footer-terms-link"], p.w-full.text-gray-500.text-sm.text-center{
+                    display: none !important;
+                }
+            
+                /* get rid of chat widget */
+                [aria-label="Chat Widget"]{display: none !important;} 
+                body { margin: 0 !important; padding: 0 !important; }
+            `,
+            secondary:  `
+                /* Show only the tabs */
+                [data-testid*="settings-tabs-container"] {
+                    display: block !important;
+                }
+            `
         }
     }
 };
