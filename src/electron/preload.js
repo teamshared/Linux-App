@@ -16,6 +16,16 @@ const API = {
 
     showPreferences: function() { return ipcRenderer.send('show-preferences'); },
 
-    showQuitDialog: function() {ipcRenderer.send("quit-channel")}
+    showQuitDialog: function() {ipcRenderer.send("quit-channel")},
+
+    instantBlock: function() {ipcRenderer.send("instant-block")},
+
+
+    //For Focus Session
+    toggleFocusSession: function(flag) {
+      if (flag){return ipcRenderer.send("focus-session-true")}
+      else {return ipcRenderer.send("focus-session-false")}
+
+    }
   }
 contextBridge.exposeInMainWorld('api', API);

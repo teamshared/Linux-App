@@ -65,7 +65,6 @@ app.on("ready", function(){
 
         const webView = createWebView({ ...config, mainWindow });
         const bounds = getWebviewContainerBounds();
-        console.log(tabName)
         switch(tabName){
             case "Blocking Schedule":
                 bounds.height = bounds.height * 0.46  //reduce the height of the webview window to 56%
@@ -112,6 +111,14 @@ ipcMain.on('quit-channel', function() {
     app.quit();
         
 });
+
+ipcMain.on('focus-session-true' ,  function(e){
+    console.log(`Focus SESSION IS true (line 116, main.js)`)
+})
+ipcMain.on('focus-session-false' ,  function(e){
+    console.log(`Focus SESSION IS false (line 119, main.js)`)
+})
+
 
 app.on('window-all-closed', function() {
     if (exitflag) {
