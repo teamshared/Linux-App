@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Blocked by FocusBear</title>
+    <link rel="icon" type="image/x-icon" href="https://github.com/Focus-Bear/assets/blob/main/focus-blocked/favicon.ico?raw=true">
+    <style>
+        @font-face {
+            font-family: "ComicSans";
+            src: url("https://github.com/Focus-Bear/assets/blob/main/focus-blocked/fonts/ComicSans.TTF?raw=true") format("truetype");
+            font-weight: bold;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "ComicSans", "Comic Sans MS", cursive, sans-serif;
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 600px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            width: 200px;
+            height: auto;
+            margin-bottom: 30px;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+            transition: transform 0.3s ease;
+        }
+
+        .logo:hover {
+            transform: scale(1.05);
+        }
+
+        .main-heading {
+            font-size: 36px;
+            margin-bottom: 30px;
+            color: #2c3e50;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .blocked-message {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #555;
+            line-height: 1.4;
+        }
+
+        .keyword {
+            color: #e74c3c;
+            font-weight: bold;
+            background-color: #ffeaa7;
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+            margin: 0 4px;
+        }
+
+        .focus-icon {
+            font-size: 48px;
+            margin: 20px 0;
+            color: #3498db;
+        }
+
+        .motivational-text {
+            font-size: 16px;
+            color: #7f8c8d;
+            margin-top: 20px;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+                margin: 20px;
+            }
+            
+            .main-heading {
+                font-size: 28px;
+            }
+            
+            .logo {
+                width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg" alt="FocusBear Logo" class="logo">
+        
+        <h1 class="main-heading">Let's keep the focus on Study</h1>
+        
+        <div class="focus-icon">🎯</div>
+        
+        <p class="blocked-message">
+            This page was blocked because it contains a restricted keyword: 
+            <span class="keyword">{keyword}</span>
+        </p>
+        
+        <p class="motivational-text">
+            Take a deep breath and redirect your energy towards your goals! 💪
+        </p>
+    </div>
+</body>
+</html>
