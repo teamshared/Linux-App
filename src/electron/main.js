@@ -2,11 +2,10 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { app, BrowserWindow, ipcMain, WebContentsView, session } from "electron";
+import { app, BrowserWindow, ipcMain} from "electron";
 import {createTray} from "./tray-handler.js"
 import { createWebView, showWebView, hideWebView, webViewConfigs } from './webview-handler.js';
 
-import './Blocker.js' 
 
 let tray = null
 let focusBearView = null
@@ -105,7 +104,6 @@ app.on("ready", function(){
 });
 
 
-
 ipcMain.on('quit-channel', function() {
     exitflag = true
     app.quit();
@@ -119,6 +117,10 @@ ipcMain.on('focus-session-false' ,  function(e){
     console.log(`Focus SESSION IS false (line 119, main.js)`)
 })
 
+//PRINTING THE URLS
+ipcMain.on('print-urls', function(event, urls) {
+    console.log('URLs received for printing:\n', urls);
+});
 
 app.on('window-all-closed', function() {
     if (exitflag) {

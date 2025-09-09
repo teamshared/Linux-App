@@ -1,8 +1,6 @@
 const { contextBridge, ipcRenderer, app } = require('electron');
 
-
 const API = {
-
     exportList: function(urls){return ipcRenderer.send("url-channel", urls)},
 
     onReply: function(callback) {
@@ -20,12 +18,13 @@ const API = {
 
     instantBlock: function() {ipcRenderer.send("instant-block")},
 
+    printList: function(urls) {ipcRenderer.send("print-urls", urls)},
 
     //For Focus Session
     toggleFocusSession: function(flag) {
       if (flag){return ipcRenderer.send("focus-session-true")}
       else {return ipcRenderer.send("focus-session-false")}
-
     }
-  }
+}
+
 contextBridge.exposeInMainWorld('api', API);
