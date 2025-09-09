@@ -31,6 +31,13 @@ function App() {
     seturlList('')
   }
 
+  function exportKeywords(){
+    console.log("export keywords")
+    setsavedMsg("Saving...")
+    window.api.exportKeywords(urlList)
+    seturlList('')
+  }
+
   function focusSession(){
     window.api.startFocusSession();
   }
@@ -97,7 +104,11 @@ function App() {
         
 
         <button onClick={exportList}>
-          Export to txt
+          Export (sub)domains to .txt
+        </button>
+
+        <button onClick={exportKeywords}>
+          Export keywords to .txt
         </button>
 
         {/* Button text changes dynamically based on focusState */}
