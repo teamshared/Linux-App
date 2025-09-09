@@ -1,0 +1,32 @@
+#bs-root{
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    white-space: normal;
+    overflow: hidden;
+}
+#blockmodes-root{
+    padding: 20px;
+    white-space: normal;
+    overflow: scroll;
+    font-size: 1.5vw;
+    
+
+}
+.instant-block-wrapper{
+    margin: 20px 10px 2px 0px;
+}
+
+#instant-block-label{
+    margin: 0 0 0 10px;
+}
+
+
+#bs-divide {
+    margin: 320px 0px 20px 0px;
+    
+}
+
+.block-mode-radio {
+    margin: 26px 4px 4px 4px;
+}

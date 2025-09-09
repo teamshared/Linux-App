@@ -1,0 +1,248 @@
+*{
+  padding: 0;
+  margin: 0;
+  font-family: Fenwick, ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+#root {
+  /* max-width: 1280px; */
+  margin: 0 auto;
+  padding: 0 auto;
+  text-align: center;
+  /* adding the below to make the text box and button centered */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem
+}
+
+#errormsg{
+  font-size: 1rem; 
+  color: #333;
+}
+
+.title {
+  font-size: 3rem; 
+  color: #333;
+}
+
+#urls{
+  resize: none;
+  height: 400px;
+  width: 300px;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+button{
+  margin: 0.8rem;
+}
+
+.App {
+  background-color: white; 
+}
+
+.export-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  /* gap: 0.5rem; */
+}
+
+/* Focus Bear App Styles */
+.app-container {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  min-height: 900px;
+  background-color: #faf9f7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  max-width: none;
+  text-align: left;
+  display: block;
+  align-items: initial;
+}
+
+.main-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 60px;
+  background-color: rgb(245, 231, 202);
+  border-bottom: 2px solid #e0e0e0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  box-shadow: rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0.1) 0px 2px 4px -2px;
+}
+
+.nav-button {
+  padding: 8px 20px;
+  border: none;
+  background-color: transparent;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  transition: all 0.2s ease;
+  margin: 0;
+  text-decoration-color: oklch(0.278078 0.029596 256.848);
+  text-decoration-line: none;
+  text-decoration-style: solid;
+  text-decoration-thickness: auto;
+}
+
+.nav-button:hover {
+  background-color: #f0f0f0;
+}
+
+.nav-button.active {
+  background-color: rgb(229, 217, 190);;
+}
+
+.nav-button.active:hover {
+  background-color: #e8e8e8;
+}
+
+
+ /* --- FOR THE SETTINGS SUB NAVIGATION  */
+.settings-nav {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  height: 60px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-button {
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  background-color: white;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #333;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.settings-button:hover {
+  background-color: #f8f8f8;
+}
+
+.settings-button.active {
+  background-color: #666;
+  color: white;
+}
+
+.settings-button.active:hover {
+  background-color: #666;
+}
+/* ------ */
+
+
+
+ /* --- FOR THE BLOCKS TAB SUB NAVIGATION  */
+.blocks-nav {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  height: 60px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.blocks-button {
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  background-color: white;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #333;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.blocks-button:hover {
+  background-color: #f8f8f8;
+}
+
+.blocks-button.active {
+  background-color: #666;
+  color: white;
+}
+
+.blocks-button.active:hover {
+  background-color: #666;
+}
+/* ------ */
+
+
+
+.content-area {
+  position: absolute;
+  top: 80px; /* 60px nav + 20px padding */
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  background-color: white;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #666;
+}
+
+.content-area.with-subnav{
+  top: 140px; /* 60px nav + 60px settings + 20px padding */
+}
+
+
+.hideArea {
+  display: none;
+}
+
+#distracting-sites{
+  padding: 2rem;
+}

@@ -1,28 +1,11 @@
 import './App.css'
-import FocusBearPage from './FocusBearPage'
-let customMessage = "Hello from the rendere process"
-
 import { useState, useEffect } from 'react';
 
-
-
 function App() {
+  //hooks
   const [urlList, seturlList] = useState('')
   const [savedMsg, setsavedMsg] = useState('')
   const [focusState, setfocusState] = useState(false)
-
-  useEffect(function (){
-    window.api.onReply(function (message){
-      setsavedMsg(message)
-    })
-    // Listen for focus session results (block or unblock)
-    // Toggles the button label based on success feedback from main process
-    window.api.onFocusSessionResult((message) => {
-      setsavedMsg(message)
-      setfocusState((prev) => !prev); // Toggle focus state (ON ↔ OFF)
-    });
-  }, []);
-
 
   function exportList(){
     console.log("export list")
@@ -30,42 +13,6 @@ function App() {
     window.api.exportList(urlList)
     seturlList('')
   }
-
-  function focusSession(){
-    window.api.startFocusSession();
-  }
-
-  async function grabCurrentUrl() {
-    try {
-      setsavedMsg("Grabbing URL...");
-      const result = await window.api.grabCurrentUrl();
-      if (result) {
-        setsavedMsg(`Found URL: ${result.url}`);
-        seturlList(prev => prev ? `${prev}\n${result.url}` : result.url);
-      } else {
-        setsavedMsg("No URL found");
-      }
-    } catch (error) {
-      setsavedMsg(`Error: ${error.message}`);
-    }
-  }
-
-  async function grabAllUrls() {
-    try {
-      setsavedMsg("Grabbing all URLs...");
-      const results = await window.api.grabAllUrls();
-      if (results.length > 0) {
-        const urls = results.map(r => r.url).join('\n');
-        seturlList(urls);
-        setsavedMsg(`Found ${results.length} URLs`);
-      } else {
-        setsavedMsg("No URLs found");
-      }
-    } catch (error) {
-      setsavedMsg(`Error: ${error.message}`);
-    }
-  }
-
 
   return (
     <>
@@ -100,17 +47,12 @@ function App() {
           Export to txt
         </button>
 
-        {/* Button text changes dynamically based on focusState */}
         <button id="focus-state" onClick={focusSession}>
-          {focusState ? "Stop Focus Session" : "Start Focus Session"}
+          Start Focus Session
         </button>
 
-        <button onClick={grabCurrentUrl}>
-          Grab Current URL
-        </button>
-
-        <button onClick={grabAllUrls}>
-          Grab All URLs
+        <button id="settings" onClick={settingsShow}>
+          Show Settings
         </button>
 
       </div>

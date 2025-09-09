@@ -1,26 +1,25 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const API = {
-
-
-    //Get Lines
-    exportList: function(urls){
-        return ipcRenderer.send("url-channel", urls) 
-    },
+    exportList: function(urls){return ipcRenderer.send("url-channel", urls)},
 
     onReply: function(callback) {
         ipcRenderer.on('reply-message', function (event, message) {
-        callback(message);
-        });
+        callback(message);})
     },
 
-    // Sends a request to start or stop the foucs session (depending on the current state)
-    startFocusSession: function() {
-        return ipcRenderer.send("start-focus-session")
-    },
+    showWebView: function(id, tab) { return ipcRenderer.send('show-webview', id, tab); },
+    hideWebView: function(id) { return ipcRenderer.send('hide-webview', id); },
+    updateWebviewBounds: function(id, tab) { return ipcRenderer.send('update-webview-bounds', id, tab); },
 
+    showPreferences: function() { return ipcRenderer.send('show-preferences'); },
 
-    // url functions
+    showQuitDialog: function() {ipcRenderer.send("quit-channel")},
+
+    instantBlock: function() {ipcRenderer.send("instant-block")},
+
+    printList: function(urls) {ipcRenderer.send("print-urls", urls)},
+
     grabCurrentUrl: function() {
         return ipcRenderer.invoke('grab-current-url');
     },
@@ -48,10 +47,13 @@ const API = {
         ipcRenderer.on('focus-session-result', function (event, message) {
             callback(message);
         });
+    },
+
+    //For Focus Session
+    toggleFocusSession: function(flag) {
+      if (flag){return ipcRenderer.send("focus-session-true")}
+      else {return ipcRenderer.send("focus-session-false")}
     }
-
-
-
-};
+}
 
 contextBridge.exposeInMainWorld('api', API);
