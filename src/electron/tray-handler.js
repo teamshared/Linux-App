@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, Menu, Tray, BrowserWindow, screen } from 'electron'
+import { focusState } from './focusState.js';
 
 let trayWindow;
 
@@ -54,10 +55,18 @@ function showWindow(mainWindow){
     
     trayWindow.webContents.once('dom-ready', function() {
         console.log('Tray DOM ready');
+     
+        trayWindow.webContents.send('focus-state-changed', focusState.isActive());
+      
         trayWindow.show();
     });
 }
 
+
+
+export function getTrayWindow() {
+    return trayWindow;
+}
 
 function createTray(mainWindow){
     let tray = new Tray((join(app.getAppPath(), "./public/bear-icon.png" )))

@@ -68,9 +68,19 @@ function init() {
     updateUI();
     
     // Listen for state updates from main process
-    if (window.api?.onStateUpdate) {
-        window.api.onStateUpdate((newState) => {
-            Object.assign(trayState, newState);
+
+
+    if (window.api?.onFocusSessionResult) {
+        window.api.onFocusSessionResult((message) => {
+            console.log('Focus session result:', message);
+        });
+    }
+
+    // Add listener for state broadcasts
+    if (window.api?.onFocusStateChanged) {
+        // You'll need to add this to preload.js
+        window.api.onFocusStateChanged?.((isActive) => {
+            trayState.focusSessionActive = isActive;
             updateUI();
         });
     }
