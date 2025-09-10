@@ -49,11 +49,24 @@ const API = {
         });
     },
 
+    onFocusStateChanged: function(callback) {
+      ipcRenderer.on('focus-state-changed', function(event, isActive) {
+          callback(isActive);
+      });
+    },
+
     //For Focus Session
     toggleFocusSession: function(flag) {
       if (flag){return ipcRenderer.send("focus-session-true")}
       else {return ipcRenderer.send("focus-session-false")}
-    }
+    },
+
+    //for url monitoring
+    onUrlChanged: function(callback) {
+        ipcRenderer.on('url-changed', function(event, data) {
+            callback(data);
+        });
+    },
 }
 
 contextBridge.exposeInMainWorld('api', API);

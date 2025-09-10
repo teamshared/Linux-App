@@ -10,9 +10,25 @@ const Distracting_sites_page = function() {
   const [urls, setUrls] = useState('facebook.com\nx.com');
   const [selectedUrls, setSelectedUrls] = useState(new Set());
   const [isChecked, setIsChecked] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState('No browser detected'); //for url monitoring 
 
+  // Listen for URL monitoring changes
+  useEffect(() => {
+    if (window.api?.onUrlChanged) {
+      window.api.onUrlChanged((data) => {
+        if (data && data.url) {
+          setCurrentUrl(data.url);
+        } else {
+          setCurrentUrl('No browser detected');
+        }
+      });
+    }
+  }, []);
+
+  //print all urls
   useEffect(function() {
     window.api?.printList(urls);
+    window.api.exportList(urls)
   }, [urls]);
 
   const urlList = urls.split('\n').filter(url => url.trim());
@@ -60,6 +76,13 @@ const Distracting_sites_page = function() {
         Which sites do you waste time on? Focus Bear will help you be more intentional about how you use these sites.
         They will be blocked during focus sessions. The rest of the time, Focus Bear will ask you why you want to use the site.
       </p>
+
+      {/* FOR URL MONITORING */}
+      <br />
+      <h4 style={{ fontSize: '0.9rem', margin: '0 0 5px 0', color: '#666' }}>
+          Current Browser URL: {currentUrl}
+      </h4>
+
       <br /><br />
 
       <div className="url-list">

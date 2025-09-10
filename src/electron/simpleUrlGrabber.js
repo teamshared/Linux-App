@@ -14,6 +14,30 @@ class SimpleUrlGrabber {
     ];
   }
 
+  async getBrowserHistory() {
+    const historyUrls = [];
+    
+    // Check recent history from browser files (when accessible)
+    const browserPaths = [
+      `${process.env.HOME}/.mozilla/firefox/*/places.sqlite`,
+      `${process.env.HOME}/.config/google-chrome/Default/History`,
+      `${process.env.HOME}/.config/chromium/Default/History`,
+      `${process.env.HOME}/.config/brave/Default/History`
+    ];
+    
+    // Note: These may not be accessible in Flatpak sandbox
+    for (const path of browserPaths) {
+      try {
+        // This is limited by Flatpak permissions, so we'll skip for now
+        // In the future, you could implement SQLite reading here
+      } catch (error) {
+        // Expected in sandboxed environment
+      }
+    }
+    
+    return historyUrls;
+  }
+
   async getActiveWindowTitle() {
     const methods = [
       { 
@@ -32,17 +56,17 @@ class SimpleUrlGrabber {
 
     for (const method of methods) {
       try {
-        console.log(`Trying method: ${method.cmd}`);
+        //console.log(`Trying method: ${method.cmd}`);
         const { stdout } = await execAsync(method.cmd);
         const title = stdout.trim();
         if (title && title !== '' && title !== 'null') {
-          console.log('Active window title:', title);
+          //console.log('Active window title:', title);
           return title;
         } else {
-          console.log('Empty or null result');
+          //console.log('Empty or null result');
         }
       } catch (error) {
-        console.log(`Method failed: ${method.cmd} - ${error.message}`);
+        //console.log(`Method failed: ${method.cmd} - ${error.message}`);
       }
     }
     
@@ -117,15 +141,15 @@ class SimpleUrlGrabber {
 
     for (const method of methods) {
       try {
-        console.log(`Trying to get full title: ${method}`);
+        //console.log(`Trying to get full title: ${method}`);
         const { stdout } = await execAsync(method);
         const title = stdout.trim();
         if (title && title !== '' && title !== 'null' && !title.includes('not found')) {
-          console.log('Got full title:', title);
+          //console.log('Got full title:', title);
           return title;
         }
       } catch (error) {
-        console.log(`Method failed: ${method}`);
+        //console.log(`Method failed: ${method}`);
       }
     }
     
@@ -147,23 +171,23 @@ class SimpleUrlGrabber {
       'Chrome'
     ];
     
-    console.log(`Checking if "${title}" is a browser window...`);
+    //console.log(`Checking if "${title}" is a browser window...`);
     const isMatch = browserIndicators.some(indicator => {
       const match = title.toLowerCase().includes(indicator.toLowerCase());
       if (match) {
-        console.log(`Matched indicator: "${indicator}"`);
+        //console.log(`Matched indicator: "${indicator}"`);
       }
       return match;
     });
     
-    console.log(`Result: ${isMatch}`);
+    //console.log(`Result: ${isMatch}`);
     return isMatch;
   }
 
   extractUrlFromTitle(title) {
     if (!title) return null;
     
-    console.log(`Extracting URL from title: "${title}"`);
+    //console.log(`Extracting URL from title: "${title}"`);
     
     const urlPatterns = [
       /(https?:\/\/[^\s\]]+)/i,
@@ -202,7 +226,7 @@ class SimpleUrlGrabber {
 
     for (const site of commonSites) {
       if (site.pattern.test(title)) {
-        console.log(`Matched common site: ${site.url}`);
+        //console.log(`Matched common site: ${site.url}`);
         return site.url;
       }
     }
@@ -214,7 +238,7 @@ class SimpleUrlGrabber {
       return url;
     }
 
-    console.log('No URL found in title');
+    //console.log('No URL found in title');
     return null;
   }
 
@@ -238,7 +262,7 @@ class SimpleUrlGrabber {
         }
       }
     } catch (error) {
-      console.log('Could not get process URLs');
+      //console.log('Could not get process URLs');
     }
     
     return urls;
@@ -260,10 +284,10 @@ class SimpleUrlGrabber {
       try {
         await execAsync(`which ${tool}`);
         available[tool] = true;
-        console.log(`${tool} is available`);
+        //console.log(`${tool} is available`);
       } catch (error) {
         available[tool] = false;
-        console.log(`${tool} is not available`);
+        //console.log(`${tool} is not available`);
       }
     }
     
@@ -271,7 +295,44 @@ class SimpleUrlGrabber {
   }
 
   async getCurrentUrl() {
-    console.log('Getting current URL using simple methods...');
+    return await this.getCurrentUrlEnhanced();
+    // console.log('Getting current URL using simple methods...');
+    
+    // const tools = await this.checkToolAvailability();
+    
+    // if (tools.xdotool || tools.wmctrl || tools.xprop) {
+    //   const title = await this.getActiveWindowTitle();
+    //   if (title && this.isBrowserWindow(title)) {
+    //     const url = this.extractUrlFromTitle(title);
+    //     if (url) {
+    //       return {
+    //         url: url,
+    //         title: title,
+    //         method: 'window_title',
+    //         browser: this.getBrowserFromTitle(title)
+    //       };
+    //     }
+    //   }
+    // }
+
+    // const processUrls = await this.getProcessUrls();
+    // if (processUrls.length > 0) {
+    //   return processUrls[0];
+    // }
+
+    // console.log('No URL found with simple methods');
+    // return null;
+  }
+
+  //enhanced version of get current url
+  async getCurrentUrlEnhanced() {
+    //console.log('Getting current URL with enhanced detection...');
+    
+    // First try to get active browser process info
+    const browserProcess = await this.getActiveBrowserProcess();
+    // if (browserProcess) {
+    //   console.log('Active browser process:', browserProcess.browser);
+    // }
     
     const tools = await this.checkToolAvailability();
     
@@ -284,7 +345,9 @@ class SimpleUrlGrabber {
             url: url,
             title: title,
             method: 'window_title',
-            browser: this.getBrowserFromTitle(title)
+            browser: browserProcess ? browserProcess.browser : this.getBrowserFromTitle(title),
+            processId: browserProcess ? browserProcess.pid : null,
+            timestamp: Date.now()
           };
         }
       }
@@ -292,10 +355,13 @@ class SimpleUrlGrabber {
 
     const processUrls = await this.getProcessUrls();
     if (processUrls.length > 0) {
-      return processUrls[0];
+      return {
+        ...processUrls[0],
+        timestamp: Date.now()
+      };
     }
 
-    console.log('No URL found with simple methods');
+    //console.log('No URL found with enhanced methods');
     return null;
   }
 
@@ -337,27 +403,110 @@ class SimpleUrlGrabber {
     return uniqueUrls;
   }
 
+  //get rid of this, replacecd by startRealtimeMOntioring
   startMonitoring(callback, interval = 2000) {
-    let lastUrl = null;
-    console.log('Starting simple URL monitoring...');
+    return this.startRealtimeMonitoring(callback, interval);
+    // let lastUrl = null;
+    // console.log('Starting simple URL monitoring...');
 
-    const checkInterval = setInterval(async () => {
+    // const checkInterval = setInterval(async () => {
+    //   try {
+    //     const result = await this.getCurrentUrl();
+    //     if (result && result.url !== lastUrl) {
+    //       lastUrl = result.url;
+    //       console.log('URL changed:', result.url);
+    //       callback(result);
+    //     }
+    //   } catch (error) {
+    //     console.error('Error during monitoring:', error);
+    //   }
+    // }, interval);
+
+    // return () => {
+    //   console.log('Stopping simple URL monitoring');
+    //   clearInterval(checkInterval);
+    // };
+  }
+
+  startRealtimeMonitoring(callback, interval = 500) {
+  let lastUrl = null;
+  let lastTitle = null;
+  console.log('Starting enhanced real-time URL monitoring...');
+
+  const checkInterval = setInterval(async () => {
       try {
         const result = await this.getCurrentUrl();
-        if (result && result.url !== lastUrl) {
-          lastUrl = result.url;
-          console.log('URL changed:', result.url);
-          callback(result);
+        if (result) {
+          const urlChanged = result.url !== lastUrl;
+          const titleChanged = result.title !== lastTitle;
+          
+          if (urlChanged || titleChanged) {
+            const changeData = {
+              ...result,
+              changed: {
+                url: urlChanged,
+                title: titleChanged
+              },
+              previousUrl: lastUrl,
+              previousTitle: lastTitle
+            };
+            
+            lastUrl = result.url;
+            lastTitle = result.title;
+          
+
+            callback(changeData);
+          }
         }
       } catch (error) {
-        console.error('Error during monitoring:', error);
+        console.error('Error during enhanced monitoring:', error);
       }
     }, interval);
 
     return () => {
-      console.log('Stopping simple URL monitoring');
+      console.log('Stopping enhanced URL monitoring');
       clearInterval(checkInterval);
     };
+  }
+
+
+  async getActiveBrowserProcess() {
+    try {
+      // Get active window PID
+      const { stdout } = await execAsync('xdotool getactivewindow getwindowpid');
+      const pid = stdout.trim();
+      
+      if (pid && pid !== '') {
+        // Get process details
+        const { stdout: processInfo } = await execAsync(`ps -p ${pid} -o comm=,args= 2>/dev/null`);
+        
+        if (this.isBrowserProcess(processInfo)) {
+          return { 
+            pid, 
+            processInfo: processInfo.trim(),
+            browser: this.getBrowserFromProcess(processInfo)
+          };
+        }
+      }
+    } catch (error) {
+      //console.log('Could not get active browser process:', error.message);
+    }
+    
+    return null;
+  }
+
+    //helper method
+  isBrowserProcess(processInfo) {
+    if (!processInfo) return false;
+    
+    const browserProcesses = [
+      'firefox', 'chrome', 'chromium', 'brave-browser', 
+      'google-chrome', 'google-chrome-stable'
+    ];
+    
+    return browserProcesses.some(browser => 
+      processInfo.toLowerCase().includes(browser)
+    );
   }
 }
 
