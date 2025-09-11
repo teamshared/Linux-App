@@ -67,6 +67,12 @@ const API = {
             callback(data);
         });
     },
+
+
+    //Auth 0 functions
+    login: function() { return ipcRenderer.invoke('auth-login'); },
+    logout: function() { return ipcRenderer.invoke('auth-logout'); },
+    getUser: function() { return ipcRenderer.invoke('auth-get-user'); },
 }
 
 contextBridge.exposeInMainWorld('api', API);
