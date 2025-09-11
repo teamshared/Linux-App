@@ -3,6 +3,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 const API = {
     exportList: function(urls){return ipcRenderer.send("url-channel", urls)},
 
+    // Export to keywords file
+    exportKeywords: function(urls){
+        return ipcRenderer.send("keywords-channel", urls)
+    },
+
     onReply: function(callback) {
         ipcRenderer.on('reply-message', function (event, message) {
         callback(message);})
