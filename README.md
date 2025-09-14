@@ -2,7 +2,7 @@
 Focus Bear Linux Distraction Blocker
 
 
-## Branch for development of the Blocking Mechanism
+## Main
 
 ### Dev Commands
 #### npm run dev:e
