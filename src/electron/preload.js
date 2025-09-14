@@ -3,6 +3,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 const API = {
     exportList: function(urls){return ipcRenderer.send("url-channel", urls)},
 
+    // Export to keywords file
+    exportKeywords: function(urls){
+        return ipcRenderer.send("keywords-channel", urls)
+    },
+
     onReply: function(callback) {
         ipcRenderer.on('reply-message', function (event, message) {
         callback(message);})
@@ -69,10 +74,16 @@ const API = {
     },
 
 
-    //Auth 0 functions
-    login: function() { return ipcRenderer.invoke('auth-login'); },
-    logout: function() { return ipcRenderer.invoke('auth-logout'); },
-    getUser: function() { return ipcRenderer.invoke('auth-get-user'); },
+    // Auth0 protocol callback listener
+    onAuthProtocolCallback: function(callback) {
+        ipcRenderer.on('auth-protocol-callback', function(event, url) {
+            console.log("=== PRELOAD RECEIVED CALLBACK ===");
+            console.log("URL:", url);
+            callback(url);
+            console.log("preload called")
+        });
+    }
+
 }
 
 contextBridge.exposeInMainWorld('api', API);

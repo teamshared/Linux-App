@@ -2,16 +2,19 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { app, BrowserWindow, ipcMain} from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, showWebView, hideWebView, webViewConfigs } from './webview-handler.js';
-import UrlHandler from './urlHandler.js';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 
 import "./Blocker.js"
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
 
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 let tray = null
 let focusBearView = null
@@ -19,10 +22,14 @@ let mainWindow = null;
 let exitflag = false;
 const urlGrabber = new SimpleUrlGrabber();
 
+// Unified focus session state
+let isFocusActive = false;
+let mitmproxyProcess = null;
+
 function getWebviewContainerBounds() {
     const bounds = mainWindow.getBounds();
     const padding = 20;
-    const topOffset = 140; // Account for navigation bars
+    const topOffset = 140;
     
     return {
         x: padding,
@@ -31,7 +38,24 @@ function getWebviewContainerBounds() {
         height: bounds.height - topOffset - padding
     };
 }
-let urlHandler;
+
+//SINGLE INSTANCING FOR Auth0
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      
+      const protocolUrl = commandLine.find(arg => arg.startsWith('focusbear://'));
+      if (protocolUrl) {
+        mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
+      }
+    }
+  });
+}
 
 app.on("ready", function(){
     mainWindow = new BrowserWindow({
@@ -41,13 +65,19 @@ app.on("ready", function(){
         show: false,
         webviewTag: true,
         webPreferences: {
-            preload: join(app.getAppPath(), "/src/electron/preload.js")
+            preload: join(app.getAppPath(), "/src/electron/preload.js"),
+            webSecurity: false,
         },
         devTools: true,
     });
     tray = createTray(mainWindow)
     
-    mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'))
+    const isDev = !app.isPackaged;
+    if (isDev) {
+        mainWindow.loadURL('http://localhost:5173');
+    } else {
+        mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'));
+    }
 
     mainWindow.on('resize', () => {
         if (focusBearView && mainWindow.contentView) {
@@ -57,15 +87,14 @@ app.on("ready", function(){
     });
 
     mainWindow.on('close', function(event) {
-
         if (exitflag){
             return 
         }
         event.preventDefault(); 
         mainWindow.hide();      
-        
     });
 
+    // WebView handlers
     ipcMain.on('show-webview', function(event, webViewId, tabName) {
         const config = webViewConfigs[webViewId];
         if (!config) return;
@@ -74,7 +103,7 @@ app.on("ready", function(){
         const bounds = getWebviewContainerBounds();
         switch(tabName){
             case "Blocking Schedule":
-                bounds.height = bounds.height * 0.46  //reduce the height of the webview window to 56%
+                bounds.height = bounds.height * 0.46
             case "Edit Habits":
                 break;
             case "Motivation":
@@ -83,8 +112,29 @@ app.on("ready", function(){
                 break;
         }
         
-        
         showWebView(webViewId, mainWindow, bounds);
+    });
+
+    // Auth0 navigation handlers
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.includes('auth0.com')) {
+            mainWindow.loadURL(url);
+            return { action: 'deny' };
+        }
+        return { action: 'deny' };
+    });
+
+    mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+        console.log('Navigation attempt to:', navigationUrl);
+        
+        if (navigationUrl.includes('auth0.com')) {
+            return;
+        }
+        if (navigationUrl.startsWith('file://') || navigationUrl.startsWith('http://localhost:5173')) {
+            return;
+        }
+    
+        event.preventDefault();
     });
 
     ipcMain.on('hide-webview', function(event, webViewId) {
@@ -96,39 +146,46 @@ app.on("ready", function(){
         showWebView(webViewId, mainWindow, bounds);
     });
 
-
-
     ipcMain.on('show-preferences', function() {
         if (mainWindow) {
-            // Resize to preferences size
             mainWindow.setSize(1000, 850);
-            mainWindow.center(); // Center on screen after resize
+            mainWindow.center();
             mainWindow.show();
             mainWindow.focus();
-            
-            mainWindow.webContents.executeJavaScript(`
-                window.location.hash = '#preferences';
-            `);
         }
     });
 });
 
-
 ipcMain.on('quit-channel', function() {
     exitflag = true
     app.quit();
-        
 });
-
-let isFocusActive = false; // Make sure this is initialized
 
 ipcMain.on('focus-session-true', function(event) {
     if (isFocusActive) {
-        // Already active, no need to do anything
         event.sender.send('focus-session-result', 'Focus session already active');
         return;
     }
     
+    startMitmproxyBlocker((error, result) => {
+        if (!error) {
+            isFocusActive = true;
+            focusState.setActive(true);
+            broadcastFocusState(true);
+            console.log('Focus session started with mitmproxy');
+        }
+        
+        try {
+            if (event.sender && !event.sender.isDestroyed()) {
+                event.sender.send('focus-session-result', error ? `Error: ${result}` : result);
+            }
+        } catch (e) {
+            console.log('Could not send result to original sender (window destroyed)');
+        }
+    });
+    
+    //Uncomment if using hosts file method
+    /*
     const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
     const blocklistPath = '/tmp/focusbear-blocklist.txt';
     const command = `pkexec node "${scriptPath}" block --list "${blocklistPath}"`;
@@ -137,9 +194,10 @@ ipcMain.on('focus-session-true', function(event) {
     
     exec(command, (error, stdout, stderr) => {
         if (!error) {
+            isFocusActive = true;
             focusState.setActive(true)
             broadcastFocusState(true);
-            console.log('Focus session started successfully');
+            console.log('Focus session started with hosts file');
         }
         const result = error ? `Error: ${stderr || error.message}` : stdout;
         try {
@@ -150,21 +208,32 @@ ipcMain.on('focus-session-true', function(event) {
             console.log('Could not send result to original sender (window destroyed)');
         }
     });
+    */
 });
 
-const stopMonitoring = urlGrabber.startRealtimeMonitoring((data) => {
-    // Send to renderer process
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('url-changed', data);
-    }
-}, 250);
-
 ipcMain.on('focus-session-false', function(event) {
-    if (!focusState.isActive()) {
+    if (!isFocusActive) {
         event.sender.send('focus-session-result', 'Focus session already inactive');
         return;
     }
     
+    // Stop mitmproxy blocker
+    stopMitmproxyBlocker();
+    isFocusActive = false;
+    focusState.setActive(false);
+    broadcastFocusState(false);
+    console.log('Focus session ended');
+    
+    try {
+        if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('focus-session-result', 'Focus session stopped');
+        }
+    } catch (e) {
+        console.log('Could not send result to original sender (window destroyed)');
+    }
+    
+    // Uncomment if using hosts file method
+    /*
     const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
     const command = `pkexec node "${scriptPath}" unblock`;
     
@@ -172,9 +241,10 @@ ipcMain.on('focus-session-false', function(event) {
     
     exec(command, (error, stdout, stderr) => {
         if (!error) {
+            isFocusActive = false;
             focusState.setActive(false);
             broadcastFocusState(false);
-            console.log('Focus session ended successfully');
+            console.log('Focus session ended');
         }
         
         const result = error ? `Error: ${stderr || error.message}` : stdout;
@@ -187,51 +257,109 @@ ipcMain.on('focus-session-false', function(event) {
             console.log('Could not send result to original sender (window destroyed)');
         }
     });
+    */
 });
 
-//PRINTING THE URLS
+// URL monitoring
+const stopMonitoring = urlGrabber.startRealtimeMonitoring((data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('url-changed', data);
+    }
+}, 250);
+
+// Other IPC handlers
 ipcMain.on('print-urls', function(event, urls) {
     console.log('URLs received for printing:\n', urls);
 });
 
-//SAVING URLS TO FILE
 ipcMain.on('url-channel', function(e, urls){
-    
-})
+    // Handle URL export
+});
 
+// App lifecycle
 app.on('window-all-closed', function() {
     if (exitflag) {
-    }
-    else{
+        // Allow app to quit
+    } else {
         return
     }
 });
 
 app.on('before-quit', function() {
-    // urlHandler.cleanup();
-    //Commented out to prevent issue 
     stopMonitoring()
-})
+    stopMitmproxyBlocker(); // Clean up mitmproxy process
+});
 
 app.on('will-quit', function() {
     exitflag = false;
 });
 
-
-//to tell the tray.js about the changes in the focus state
+// Focus state broadcasting
 function broadcastFocusState(isActive) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('focus-state-changed', isActive);
     }
     
-    // Get tray window from tray-handler
     const trayWindow = getTrayWindow();
     if (trayWindow && !trayWindow.isDestroyed()) {
         trayWindow.webContents.send('focus-state-changed', isActive);
     }
 }
 
+app.setAsDefaultProtocolClient('focusbear');
 
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  console.log('=== MAIN PROCESS RECEIVED PROTOCOL URL ===');
+  console.log('URL:', url);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    console.log('Sending to renderer process...');
+    mainWindow.webContents.send('auth-protocol-callback', url);
+  } else {
+    console.log('Main window not available!');
+  }
+});
 
+// MITMPROXY BLOCKING FUNCTIONS
+function startMitmproxyBlocker(callback) {
+    const scriptPath = join(__dirname, '../python/mitmproxy_blocker.py');
+    
+    console.log('Starting mitmproxy blocker...');
+    
+    mitmproxyProcess = spawn('mitmdump', [
+        '-s', scriptPath,
+        '--set', 'block_global=false'
+    ]);
 
+    mitmproxyProcess.stdout.on('data', (data) => {
+        console.log(`mitmproxy: ${data}`);
+    });
 
+    mitmproxyProcess.stderr.on('data', (data) => {
+        console.error(`mitmproxy error: ${data}`);
+    });
+
+    mitmproxyProcess.on('close', (code) => {
+        console.log(`mitmproxy process exited with code ${code}`);
+        mitmproxyProcess = null;
+        isFocusActive = false;
+    });
+
+    mitmproxyProcess.on('error', (error) => {
+        console.error('Failed to start mitmproxy:', error);
+        callback(error, error.message);
+        return;
+    });
+
+    setTimeout(() => {
+        callback(null, 'mitmproxy blocker started');
+    }, 1000);
+}
+
+function stopMitmproxyBlocker() {
+    if (mitmproxyProcess) {
+        console.log('Stopping mitmproxy blocker...');
+        mitmproxyProcess.kill('SIGTERM');
+        mitmproxyProcess = null;
+    }
+}

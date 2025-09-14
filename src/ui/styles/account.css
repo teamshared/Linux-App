@@ -1,0 +1,41 @@
+#acc-root{
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    white-space: normal;
+    overflow: hidden;
+}
+#account-root{
+    padding: 20px;
+    white-space: normal;
+    overflow: scroll;
+    font-size: 1.5vw;
+    
+
+}
+.instant-block-wrapper{
+    margin: 20px 10px 2px 0px;
+}
+
+#instant-block-label{
+    margin: 0 0 0 10px;
+}
+
+
+#acc-divide {
+    margin: 320px 0px 20px 0px;
+    
+}
+
+.acc-button{
+    padding: 10px 12px 10px 12px;
+    margin: 0 auto;
+    background-color: white;
+    font-size: small;
+    color: black;
+    border: 1px solid #ff9500;
+}
+
+.block-mode-radio {
+    margin: 26px 4px 4px 4px;
+}
