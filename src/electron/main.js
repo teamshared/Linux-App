@@ -5,7 +5,6 @@ const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain} from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, showWebView, hideWebView, webViewConfigs } from './webview-handler.js';
-import UrlHandler from './urlHandler.js';
 import { exec } from 'child_process';
 import { spawn } from 'child_process';
 
@@ -13,12 +12,18 @@ import "./Blocker.js"
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
 
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
 
 let tray = null
 let focusBearView = null
 let mainWindow = null;
 let exitflag = false;
 const urlGrabber = new SimpleUrlGrabber();
+
 
 function getWebviewContainerBounds() {
     const bounds = mainWindow.getBounds();
@@ -34,6 +39,28 @@ function getWebviewContainerBounds() {
 }
 let urlHandler;
 
+
+//SINGLE INSTANCING FOR Auth0
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, focus our window instead
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      
+      // Check if launched with protocol URL
+      const protocolUrl = commandLine.find(arg => arg.startsWith('focusbear://'));
+      if (protocolUrl) {
+        mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
+      }
+    }
+  });
+}
+
+
 app.on("ready", function(){
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
@@ -42,13 +69,20 @@ app.on("ready", function(){
         show: false,
         webviewTag: true,
         webPreferences: {
-            preload: join(app.getAppPath(), "/src/electron/preload.js")
+            preload: join(app.getAppPath(), "/src/electron/preload.js"),
+            webSecurity: false,
         },
         devTools: true,
     });
     tray = createTray(mainWindow)
-    
-    mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'))
+        const isDev = !app.isPackaged;
+    if (isDev) {
+        mainWindow.loadURL('http://localhost:5173');
+    } else {
+        mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'));
+    }
+   // mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html')) //UNCOMMENT FOR PRODUCTION
+   // mainWindow.loadFile(join(app.getAppPath(), 'http://localhost:5173')) //FOR DEVELOPMENT
 
 <<<<<<< HEAD
     mainWindow.on('resize', () => {
@@ -89,6 +123,34 @@ app.on("ready", function(){
         showWebView(webViewId, mainWindow, bounds);
     });
 
+
+
+        // Add this to allow Auth0 navigation
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        // Allow Auth0 URLs to open in the same window
+        if (url.includes('auth0.com')) {
+            mainWindow.loadURL(url);
+            return { action: 'deny' };
+        }
+        return { action: 'deny' };
+    });
+
+
+    mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+        console.log('Navigation attempt to:', navigationUrl);
+        
+        // Allow Auth0 URLs but prevent ones with fragments that could cause issues
+        if (navigationUrl.includes('auth0.com')) {
+            return; // Allow all Auth0 navigation
+        }
+        if (navigationUrl.startsWith('file://')) {
+            return;
+        }
+    
+        event.preventDefault();
+    }
+    );
+
     ipcMain.on('hide-webview', function(event, webViewId) {
         hideWebView(webViewId, mainWindow);
     });
@@ -108,9 +170,9 @@ app.on("ready", function(){
             mainWindow.show();
             mainWindow.focus();
             
-            mainWindow.webContents.executeJavaScript(`
-                window.location.hash = '#preferences';
-            `);
+            // mainWindow.webContents.executeJavaScript(`
+            //     window.location.hash = '#preferences';
+            // `);
         }
     });
 });
@@ -233,7 +295,10 @@ function broadcastFocusState(isActive) {
     }
 }
 
+//AUTH 0 CUSTOM PROTOCOL
+app.setAsDefaultProtocolClient('focusbear');
 
+<<<<<<< HEAD
 
 
 
@@ -316,3 +381,18 @@ app.on('before-quit', () => {
     stopMitmproxyBlocker();
 });
 >>>>>>> 59b83135d1612d7a8d9ae82872c7a8690a5a415f
+=======
+// Handle protocol callback
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+console.log('=== MAIN PROCESS RECEIVED PROTOCOL URL ===');
+  console.log('URL:', url);
+  // Forward to renderer
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    console.log('Sending to renderer process...');
+    mainWindow.webContents.send('auth-protocol-callback', url);
+  } else {
+    console.log('Main window not available!');
+  }
+});
+>>>>>>> develop/user-interface
