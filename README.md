@@ -28,19 +28,20 @@ sudo apt install mitmproxy
 - Port: 8080
 - Certifcate settings, import, and select certificate file.
 
-4. Ensure there is keyword file at /tmp/focusbear-keywords.txt with keywords to be blocked
-- Keyword per line (e.g., news, social, gaming)
-- Can do it manually or use the added export keywords to .txt button in electron gui
+4. Run the demo app and input domains and keywords
+- npm run dev:e
+- input domains you want to block e.g., facebook.com, honey.nine.com.au and click 'Export (sub)domains to .txt.
+- input keywords you want to block e.g., games, social, news and click 'Export keywords to .txt'
 
-5. runing the keyword blocker
-1. Navigate to python directory
-2. Run the script
+5. running the keyword blocker
+1. click 'Start Focus Session'
+- It will Run the script:
 - mitmdump -s mitmproxy_blocker.py
-3. Keep this terminal running while testing
-- Visit any site containing your keywords in the URL — it should display the FocusBear blocked page.
+3. Now try visiting the blocked websites
+- Visit any site containing your domains and keywords in the URL — it should display the FocusBear blocked page.
 
 Stopping blocker.
-- CTRL + C to stop
+- click 'Stop Focus Session'
 - Remove proxy settings to return to normal browsing
 
 

@@ -1,126 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Blocked by FocusBear</title>
-    <link rel="icon" type="image/x-icon" href="https://github.com/Focus-Bear/assets/blob/main/focus-blocked/favicon.ico?raw=true">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blocked by Focus Bear</title>
+    <link rel="icon" href="https://focus-bear.github.io/assets/focus-blocked/images/favicon.ico" />
+    <link
+      rel="stylesheet"
+      href="https://focus-bear.github.io/assets/focus-blocked/styles/main.css"
+    />
     <style>
-        @font-face {
-            font-family: "ComicSans";
-            src: url("https://github.com/Focus-Bear/assets/blob/main/focus-blocked/fonts/ComicSans.TTF?raw=true") format("truetype");
-            font-weight: bold;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "ComicSans", "Comic Sans MS", cursive, sans-serif;
-            font-weight: bold;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            color: #333;
-            padding: 20px;
-        }
-
-        .container {
-            text-align: center;
-            max-width: 600px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
-        }
-
-        .logo {
-            width: 200px;
-            height: auto;
-            margin-bottom: 30px;
-            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
-            transition: transform 0.3s ease;
-        }
-
-        .logo:hover {
-            transform: scale(1.05);
-        }
-
-        .main-heading {
-            font-size: 36px;
-            margin-bottom: 30px;
-            color: #2c3e50;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .blocked-message {
-            font-size: 20px;
-            margin-bottom: 20px;
-            color: #555;
-            line-height: 1.4;
-        }
-
-        .keyword {
-            color: #e74c3c;
-            font-weight: bold;
-            background-color: #ffeaa7;
-            padding: 4px 8px;
-            border-radius: 6px;
-            display: inline-block;
-            margin: 0 4px;
-        }
-
-        .focus-icon {
-            font-size: 48px;
-            margin: 20px 0;
-            color: #3498db;
-        }
-
-        .motivational-text {
-            font-size: 16px;
-            color: #7f8c8d;
-            margin-top: 20px;
-            font-style: italic;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                padding: 30px 20px;
-                margin: 20px;
-            }
-            
-            .main-heading {
-                font-size: 28px;
-            }
-            
-            .logo {
-                width: 150px;
-            }
-        }
+      /* Additional styles for the blocking information */
+      .block-info {
+        background-color: #ffeaa7;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 20px 0;
+        text-align: center;
+      }
+      
+      .block-reason {
+        font-weight: bold;
+        color: #e74c3c;
+      }
+      
+      .block-value {
+        background-color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        margin-top: 10px;
+        display: inline-block;
+        font-family: monospace;
+      }
     </style>
-</head>
-<body>
-    <div class="container">
-        <img src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg" alt="FocusBear Logo" class="logo">
+  </head>
+
+  <body>
+    <div id="container" class="container">
+      <picture>
+        <source
+          srcset="
+            https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg
+          "
+          type="image/svg+xml"
+        />
+        <source
+          srcset="
+            https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.webp
+          "
+          type="image/webp"
+        />
+        <source
+          srcset="
+            https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.png
+          "
+          type="image/png"
+        />
+        <img
+          src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.png"
+          alt="Focus Bear"
+        />
+      </picture>
+      
+      <div class="focusTitleWrapper">
+        <h1 id="focusTitle">Let's keep the focus on your goals!</h1>
+        <h3 id="focusSubTitle">This page has been blocked</h3>
         
-        <h1 class="main-heading">Let's keep the focus on Study</h1>
+        <div class="block-info">
+          <p>Blocked due to: <span class="block-reason" id="blockReason">{block_type}</span></p>
+          <p>Matched value: <span class="block-value" id="blockValue">{matched_value}</span></p>
+        </div>
         
-        <div class="focus-icon">🎯</div>
+        <p id="focusAdditionalInfo">Take a deep breath and redirect your energy towards what matters most.</p>
         
-        <p class="blocked-message">
-            This page was blocked because it contains a restricted keyword: 
-            <span class="keyword">{keyword}</span>
-        </p>
-        
-        <p class="motivational-text">
-            Take a deep breath and redirect your energy towards your goals! 💪
-        </p>
+        <div id="progressWrapper"></div>
+      </div>
+
+      <div id="privacyContainer">
+        <h6 id="privacyNoticeContent" class="hide"></h6>
+        <div id="privacyNoticeContentArrow" class="hide"></div>
+        <button id="privacyBtn"></button>
+      </div>
+      
+      <h3 id="focusTipWrapper">Tip: Try the Pomodoro technique for better focus!</h3>
     </div>
-</body>
+
+    <script src="https://focus-bear.github.io/assets/focus-blocked/js/moment_2.29.1.min.js"></script>
+    <script src="https://focus-bear.github.io/assets/focus-blocked/js/utils.js"></script>
+    <script>
+      // Set the blocking information from URL parameters or placeholders
+      document.addEventListener('DOMContentLoaded', function() {
+        // Get the blocking reason from the URL or use the placeholder text
+        const urlParams = new URLSearchParams(window.location.search);
+        const blockReason = urlParams.get('reason') || document.getElementById('blockReason').textContent;
+        const blockValue = urlParams.get('value') || document.getElementById('blockValue').textContent;
+        
+        // Update the display
+        document.getElementById('blockReason').textContent = blockReason;
+        document.getElementById('blockValue').textContent = blockValue;
+        
+        // Customize message based on block type
+        if (blockReason === 'domain') {
+          document.getElementById('focusSubTitle').textContent = 'This website has been blocked';
+          document.getElementById('focusAdditionalInfo').textContent = 
+            'This site is on your blocklist. Consider why you added it and refocus on your tasks.';
+        } else if (blockReason === 'keyword') {
+          document.getElementById('focusSubTitle').textContent = 'Content blocked due to restricted keyword';
+          document.getElementById('focusAdditionalInfo').textContent = 
+            'This page contains content that may distract you from your goals.';
+        }
+      });
+    </script>
+  </body>
 </html>
