@@ -6,6 +6,7 @@ import Distracting_sites_page from './distracting-sites';
 import MotivationPage from './motivation';
 import BlockingSchedule from './blocking-schedule'
 import AccountPage from './account';
+import Keywords_page from './keyword-page';
 
 const PreferencesPage = function({ user }) {
   const [activeTab, setActiveTab] = useState('Help');
@@ -33,7 +34,8 @@ const PreferencesPage = function({ user }) {
       'Motivation': 'motivation',
       'Blocks': {
         'Blocking Schedule': 'blocking_schedule',
-        'Super Distracting Sites': null // Uses React component
+        'Super Distracting Sites': null, // Uses React component
+        'Keyword Blocking': null
       },
       'Settings': {
         'Super Distracting Sites': null, // Uses React component
@@ -65,7 +67,7 @@ const PreferencesPage = function({ user }) {
 
   const tabs = ['Help', 'Blocks', 'Settings', 'Edit Habits', 'Motivation'];
   const settingsTabs = ['General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
-  const blocksTabs = ['Blocking Schedule', 'Super Distracting Sites'];
+  const blocksTabs = ['Blocking Schedule', 'Super Distracting Sites', 'Keyword Blocking'];
 
   return (
     <main className="app-container">
@@ -113,6 +115,7 @@ const PreferencesPage = function({ user }) {
       )}
 
       {/* React Component Renders - only show when not using webviews */}
+      {/* BLOCK TAB */}
       {(activeTab === 'Blocks' && activeBlocksTab === 'Super Distracting Sites') && (
         <section className="content-area with-subnav light-orange">
           <Distracting_sites_page />
@@ -122,6 +125,12 @@ const PreferencesPage = function({ user }) {
       {(activeTab === 'Blocks' && activeBlocksTab === 'Blocking Schedule') && (
         <div className="content-area with-subnav">
           <BlockingSchedule />
+        </div>
+      )}
+
+      {(activeTab === 'Blocks' && activeBlocksTab === 'Keyword Blocking') && (
+        <div className="content-area with-subnav">
+          <Keywords_page />
         </div>
       )}
 
