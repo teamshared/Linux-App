@@ -4,7 +4,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
-import { createWebView, showWebView, hideWebView, webViewConfigs } from './webview-handler.js';
+import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs } from './webview-handler.js';
 import { exec, spawn } from 'child_process';
 
 import "./Blocker.js"
@@ -94,26 +94,6 @@ app.on("ready", function(){
         mainWindow.hide();      
     });
 
-    // WebView handlers
-    ipcMain.on('show-webview', function(event, webViewId, tabName) {
-        const config = webViewConfigs[webViewId];
-        if (!config) return;
-
-        const webView = createWebView({ ...config, mainWindow });
-        const bounds = getWebviewContainerBounds();
-        switch(tabName){
-            case "Blocking Schedule":
-                bounds.height = bounds.height * 0.46
-            case "Edit Habits":
-                break;
-            case "Motivation":
-                break;
-            default:
-                break;
-        }
-        
-        showWebView(webViewId, mainWindow, bounds);
-    });
 
     // Auth0 navigation handlers
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -137,14 +117,11 @@ app.on("ready", function(){
         event.preventDefault();
     });
 
-    ipcMain.on('hide-webview', function(event, webViewId) {
-        hideWebView(webViewId, mainWindow);
-    });
 
-    ipcMain.on('update-webview-bounds', function(event, webViewId, tabName) {
-        const bounds = getWebviewContainerBounds();
-        showWebView(webViewId, mainWindow, bounds);
-    });
+    // ipcMain.on('update-webview-bounds', function(event, webViewId, tabName) {
+    //     const bounds = getWebviewContainerBounds();
+    //     showWebView(webViewId, mainWindow, bounds);
+    // });
 
     ipcMain.on('show-preferences', function() {
         if (mainWindow) {
@@ -363,3 +340,27 @@ function stopMitmproxyBlocker() {
         mitmproxyProcess = null;
     }
 }
+
+//Webiew Handling
+ipcMain.on('switch-webview', function(event, webViewId) {
+    const config = webViewConfigs[webViewId];
+    if (!config) return;
+
+    const webView = createWebView({ ...config, mainWindow });
+    const bounds = getWebviewContainerBounds();
+
+    switch(webViewId) {
+        case 'blocking_schedule':
+            bounds.height = bounds.height * 0.46;
+            break;
+        case 'edit_habits':
+            // Keep default bounds
+            break;
+        // Add other webview-specific sizing as needed
+    }
+    switchToWebView(webViewId, mainWindow, bounds);
+});
+
+ipcMain.on('hide-all-webviews', function(event) {
+    hideAllWebViews(mainWindow);
+})

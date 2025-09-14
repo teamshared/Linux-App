@@ -13,9 +13,9 @@ const API = {
         callback(message);})
     },
 
-    showWebView: function(id, tab) { return ipcRenderer.send('show-webview', id, tab); },
-    hideWebView: function(id) { return ipcRenderer.send('hide-webview', id); },
-    updateWebviewBounds: function(id, tab) { return ipcRenderer.send('update-webview-bounds', id, tab); },
+
+    hideAllViews: function() {return ipcRenderer.send('hide-all-webview')},
+    // updateWebviewBounds: function(id, tab) { return ipcRenderer.send('update-webview-bounds', id, tab); },
 
     showPreferences: function() { return ipcRenderer.send('show-preferences'); },
 
@@ -47,6 +47,15 @@ const API = {
         });
     },
 
+    //Webview Management
+    switchWebView: function(id) {
+        return ipcRenderer.send('switch-webview', id);
+    },
+
+    hideAllWebViews: function() {
+        return ipcRenderer.send('hide-all-webviews');
+    },
+    //
     
     onFocusSessionResult: function(callback) {
         ipcRenderer.on('focus-session-result', function (event, message) {
