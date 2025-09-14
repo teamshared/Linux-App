@@ -1,8 +1,7 @@
 ## Project-Group-3---AR-573
 Focus Bear Linux Distraction Blocker
 
-<<<<<<< HEAD
-=======
+
 ## Branch for development of the Blocking Mechanism
 
 ### Dev Commands
@@ -53,5 +52,4 @@ wmctrl - Lists all windows and their titles
 xprop - Gets detailed window properties (full titles)
 
 
->>>>>>> 3e13cbe980ce05f3c58839d02ca170ba3b1f3848
 
