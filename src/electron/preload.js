@@ -69,10 +69,16 @@ const API = {
     },
 
 
-    //Auth 0 functions
-    login: function() { return ipcRenderer.invoke('auth-login'); },
-    logout: function() { return ipcRenderer.invoke('auth-logout'); },
-    getUser: function() { return ipcRenderer.invoke('auth-get-user'); },
+    // Auth0 protocol callback listener
+    onAuthProtocolCallback: function(callback) {
+        ipcRenderer.on('auth-protocol-callback', function(event, url) {
+            console.log("=== PRELOAD RECEIVED CALLBACK ===");
+            console.log("URL:", url);
+            callback(url);
+            console.log("preload called")
+        });
+    }
+
 }
 
 contextBridge.exposeInMainWorld('api', API);

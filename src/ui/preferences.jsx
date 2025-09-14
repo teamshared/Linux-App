@@ -5,14 +5,15 @@ import './styles/Consistent-colors.css'
 import Distracting_sites_page from './distracting-sites';
 import MotivationPage from './motivation';
 import BlockingSchedule from './blocking-schedule'
+import AccountPage from './account';
 
 
-const PreferencesPage = function() {
+const PreferencesPage = function({ user }) {
   const [activeTab, setActiveTab] = useState('Help');
   const [activeSettingsTab, setActiveSettingsTab] = useState('General');
   const [activeBlocksTab, setActiveBlocksTab] = useState('Blocking Schedule');
 
-
+//USE EFFECT TO TOGGLE WEBVIEWS ON AND OFF
   useEffect(() => {
 
     window.api.hideWebView('edit_habits');
@@ -38,12 +39,6 @@ const PreferencesPage = function() {
   const tabs = ['Help', 'Blocks', 'Settings', 'Edit Habits', 'Motivation'];
   const settingsTabs = ['General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
   const blocksTabs = ['Blocking Schedule', 'Super Distracting Sites'];
-
-  const getContentText = function(){
-    if (activeTab === 'Blocks') return 'Loading Focus Bear...';
-    if (activeTab === 'Settings') return `${activeSettingsTab} Settings`;
-    return `${activeTab} Content`;
-  };
 
   return (
     <main className="app-container">
@@ -124,9 +119,17 @@ const PreferencesPage = function() {
       )}
 
 
-    
+      {/* Settings Tab - Account Page */}
+      {(activeTab === 'Settings' && activeSettingsTab === 'Account') && (
+        <div className='content-area with-subnav'>
+          <AccountPage />
+        </div>
+      )}
 
-      {/* Content Area */}
+
+    
+{/* 
+     
       <section
         id="webview-container"
         className={`content-area 
@@ -146,7 +149,7 @@ const PreferencesPage = function() {
         
       >
         {getContentText()}
-      </section>
+      </section> */}
     </main>
   );
 };
