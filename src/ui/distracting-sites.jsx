@@ -63,9 +63,9 @@ const Distracting_sites_page = function() {
     setUrlInput('');
   };
 
-  useEffect(() => {
-    window.api?.hideWebView('instant-block');
-  }, [isChecked]);
+  // useEffect(() => {
+  //   window.api?.hideWebView('instant-block');
+  // }, [isChecked]);
 
   return (
     <section id="distracting-sites">
