@@ -1,41 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import './styles/Consistent-colors.css';
 import './styles/distracting-sites.css';
+import { useUrlList } from '../services/sync.js';
 
 
 
 const Distracting_sites_page = function() {
   const [showModal, setShowModal] = useState(false);
   const [urlInput, setUrlInput] = useState('');
-  const [urls, setUrls] = useState('facebook.com\nx.com');
   const [selectedUrls, setSelectedUrls] = useState(new Set());
   const [isChecked, setIsChecked] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState('No browser detected'); //for url monitoring 
+  const { urlArray, addUrl, removeUrls, isLoading } = useUrlList();
 
-  // Listen for URL monitoring changes
-  useEffect(() => {
-    if (window.api?.onUrlChanged) {
-      window.api.onUrlChanged((data) => {
-        if (data && data.url) {
-          setCurrentUrl(data.url);
-        } else {
-          setCurrentUrl('No browser detected');
-        }
-      });
-    }
-  }, []);
 
   //print all urls
   useEffect(function() {
-    window.api?.printList(urls);
-    window.api.exportList(urls)
-  }, [urls]);
+    if (!isLoading && urlArray) {
+      const urlString = urlArray.join('\n');
+      window.api?.printList(urlString);
+      window.api?.exportList(urlString);
+    }
+  }, [urlArray, isLoading]);
 
-  const urlList = urls.split('\n').filter(url => url.trim());
 
   const handleAddUrl = function() {
     if (urlInput.trim()) {
-      setUrls(urls + (urls ? '\n' : '') + urlInput.trim());
+      addUrl(urlInput.trim());
       setUrlInput('');
       setShowModal(false);
     }
@@ -53,9 +43,9 @@ const Distracting_sites_page = function() {
   };
 
   const handleRemoveUrl = function() {
-    const remainingUrls = urlList.filter((_, index) => !selectedUrls.has(index));
-    setUrls(remainingUrls.join('\n'));
+    removeUrls(selectedUrls);
     setSelectedUrls(new Set());
+
   };
 
   const closeModal = function() {
@@ -77,16 +67,10 @@ const Distracting_sites_page = function() {
         They will be blocked during focus sessions. The rest of the time, Focus Bear will ask you why you want to use the site.
       </p>
 
-      {/* FOR URL MONITORING */}
-      <br />
-      <h4 style={{ fontSize: '0.9rem', margin: '0 0 5px 0', color: '#666' }}>
-          Current Browser URL: {currentUrl}
-      </h4>
-
       <br /><br />
 
       <div className="url-list">
-        {urlList.map((url, index) => (
+        {urlArray.map((url, index) => (
           <div 
             key={index}
             className={`url-item ${selectedUrls.has(index) ? 'selected' : ''}`}

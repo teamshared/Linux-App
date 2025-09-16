@@ -6,12 +6,11 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs } from './webview-handler.js';
 import { exec, spawn } from 'child_process';
-
 import "./Blocker.js"
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
-
 import dotenv from 'dotenv';
+import { promises as fs } from 'fs';
 
 // Load environment variables
 dotenv.config();
@@ -364,3 +363,123 @@ ipcMain.on('switch-webview', function(event, webViewId) {
 ipcMain.on('hide-all-webviews', function(event) {
     hideAllWebViews(mainWindow);
 })
+
+
+//FOR AUTH0 SETTINGS SYNCING
+
+const getSettingsPath = () => {
+  return join(app.getPath('userData'), 'settings.json');
+};
+
+ipcMain.handle('get-settings', async () => {
+  try {
+    const cloudSettings = await loadFromAuth0();
+    if (cloudSettings) {
+      console.log('Loaded settings from Auth0:', cloudSettings);
+      saveLocalBackup(cloudSettings);
+      return cloudSettings;
+    }
+  } catch (error) {
+    console.log('Auth0 load failed, trying local fallback:', error.message);
+  }
+
+  try {
+    const settingsPath = getSettingsPath();
+    const data = await fs.readFile(settingsPath, 'utf8');
+    const settings = JSON.parse(data);
+    console.log('Loaded settings from local fallback:', settings);
+    return settings;
+  } catch (error) {
+    console.log('No settings found, using defaults');
+    return null;
+  }
+});
+
+ipcMain.handle('save-settings', async (event, settings) => {
+  try {
+    const settingsWithMeta = {
+      ...settings,
+      lastModified: new Date().toISOString(),
+      version: '1.0.0'
+    };
+    
+    try {
+      await saveToAuth0(settingsWithMeta);
+      console.log('Settings saved to Auth0');
+    } catch (error) {
+      console.error('Auth0 save failed, saving locally:', error.message);
+    }
+    
+    await saveLocalBackup(settingsWithMeta);
+    applySettings(settings);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+async function loadFromAuth0() {
+  return new Promise((resolve, reject) => {
+    mainWindow.webContents.send('auth0-get-settings');
+    
+    const timeout = setTimeout(() => {
+      ipcMain.removeAllListeners('auth0-settings-response');
+      reject(new Error('Timeout loading from Auth0'));
+    }, 5000);
+    
+    ipcMain.once('auth0-settings-response', (event, result) => {
+      clearTimeout(timeout);
+      if (result.success) {
+        resolve(result.data);
+      } else {
+        reject(new Error(result.error));
+      }
+    });
+  });
+}
+
+async function saveToAuth0(settings) {
+  return new Promise((resolve, reject) => {
+    mainWindow.webContents.send('auth0-save-settings', settings);
+    
+    const timeout = setTimeout(() => {
+      ipcMain.removeAllListeners('auth0-save-response');
+      reject(new Error('Timeout saving to Auth0'));
+    }, 10000);
+    
+    ipcMain.once('auth0-save-response', (event, result) => {
+      clearTimeout(timeout);
+      if (result.success) {
+        resolve(result.data);
+      } else {
+        reject(new Error(result.error));
+      }
+    });
+  });
+}
+
+async function saveLocalBackup(settings) {
+  try {
+    const settingsPath = getSettingsPath();
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    console.log('Local backup saved:', settingsPath);
+  } catch (error) {
+    console.error('Failed to save local backup:', error);
+  }
+}
+
+function applySettings(settings) {
+  if (settings.urlList) {
+    const urlString = settings.urlList.join('\n');
+    fs.writeFile('/tmp/focusbear-blocklist.txt', urlString)
+      .then(() => console.log('Blocklist updated'))
+      .catch(err => console.error('Failed to update blocklist:', err));
+  }
+  
+  console.log('Blocking mode:', settings.selectedBlockMode);
+  console.log('Blocking method:', settings.selectedBlockMethod);
+  console.log('Bear mode:', settings.selectedBearMode);
+}
+// END OF AUTH 0 SETTINGS SYNCING

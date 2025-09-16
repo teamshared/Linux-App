@@ -91,7 +91,36 @@ const API = {
             callback(url);
             console.log("preload called")
         });
+    },
+    
+    //  settings sync
+    getSettings: function() {
+        return ipcRenderer.invoke('get-settings');
+    },
+
+    saveSettings: function(settings) {
+        return ipcRenderer.invoke('save-settings', settings);
+    },
+
+    // Auth0 communication handlers for main process
+    onAuth0GetSettings: function(callback) {
+        ipcRenderer.on('auth0-get-settings', callback);
+    },
+
+    onAuth0SaveSettings: function(callback) {
+        ipcRenderer.on('auth0-save-settings', (event, settings) => {
+            callback(settings);
+        });
+    },
+
+    sendAuth0SettingsResponse: function(result) {
+        ipcRenderer.send('auth0-settings-response', result);
+    },
+
+    sendAuth0SaveResponse: function(result) {
+        ipcRenderer.send('auth0-save-response', result);
     }
+    
 
 }
 
