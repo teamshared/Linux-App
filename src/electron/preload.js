@@ -93,7 +93,6 @@ const API = {
         });
     },
     
-    //  settings sync
     getSettings: function() {
         return ipcRenderer.invoke('get-settings');
     },
@@ -102,7 +101,6 @@ const API = {
         return ipcRenderer.invoke('save-settings', settings);
     },
 
-    // Auth0 communication handlers for main process
     onAuth0GetSettings: function(callback) {
         ipcRenderer.on('auth0-get-settings', callback);
     },

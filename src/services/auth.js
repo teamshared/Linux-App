@@ -23,7 +23,12 @@ class AuthService {
     try {
       console.log('Starting login with Auth0...');
       console.log('Redirect URI:', window.location.origin + '/callback');
-      await this.auth0.loginWithRedirect();
+      await this.auth0.loginWithRedirect({
+      authorizationParams: {
+        scope: 'openid profile email offline_access',
+        audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/api/v2/`
+      }
+    });
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -96,92 +101,38 @@ class AuthService {
     try {
       const user = await this.getUser();
       if (!user) {
-        throw new Error('No authenticated user');
+        localStorage.setItem('settings_guest', JSON.stringify(settings));
+        console.log('Settings synced for guest user');
+        return;
       }
 
-      // Save to Auth0 user metadata
-      const token = await this.getManagementToken();
-      const domain = import.meta.env.VITE_AUTH0_DOMAIN;
-
-      // Get current metadata first
-      const currentResponse = await fetch(`https://${domain}/api/v2/users/${user.sub}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const currentData = await currentResponse.json();
-      
-      // Update metadata
-      const response = await fetch(`https://${domain}/api/v2/users/${user.sub}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_metadata: {
-            ...currentData.user_metadata,
-            focusbear_settings: settings
-          }
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to save to Auth0: ${response.status}`);
-      }
-
-      // Also save locally as backup
       localStorage.setItem(`settings_${user.sub}`, JSON.stringify(settings));
-      console.log('Settings synced to Auth0 and locally:', settings);
+      console.log('Settings synced for user:', user.email);
+      
     } catch (error) {
       console.error('Settings sync failed:', error);
-      // Fallback to localStorage only
-      const user = await this.getUser();
-      if (user) {
-        localStorage.setItem(`settings_${user.sub}`, JSON.stringify(settings));
-        console.log('Settings synced locally only:', settings);
-      }
       throw error;
     }
   }
 
-  // Helper method to get user settings
   async getUserSettings() {
     try {
       const user = await this.getUser();
-      if (!user) return null;
-
-      // Try to load from Auth0 first
-      try {
-        const token = await this.getManagementToken();
-        const domain = import.meta.env.VITE_AUTH0_DOMAIN;
-        
-        const response = await fetch(`https://${domain}/api/v2/users/${user.sub}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          const userData = await response.json();
-          const cloudSettings = userData.user_metadata?.focusbear_settings;
-          if (cloudSettings) {
-            // Also save locally as backup
-            localStorage.setItem(`settings_${user.sub}`, JSON.stringify(cloudSettings));
-            console.log('Settings loaded from Auth0');
-            return cloudSettings;
-          }
-        }
-      } catch (error) {
-        console.log('Auth0 load failed, trying localStorage:', error.message);
+      
+      let storageKey;
+      if (!user) {
+        storageKey = 'settings_guest';
+      } else {
+        storageKey = `settings_${user.sub}`;
       }
 
-      // Fallback to localStorage
-      const stored = localStorage.getItem(`settings_${user.sub}`);
-      return stored ? JSON.parse(stored) : null;
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+
+      return null;
+      
     } catch (error) {
       console.error('Failed to get user settings:', error);
       return null;
@@ -190,15 +141,15 @@ class AuthService {
 
   async getManagementToken() {
     try {
-      return await this.auth0.getTokenSilently({
-        authorizationParams: {
-          audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/api/v2/`,
-          scope: 'read:user_metadata update:user_metadata'
-        }
-      });
+      const user = await this.getUser();
+      if (!user) return null;
+      
+      const stored = localStorage.getItem(`settings_${user.sub}`);
+      console.log('Settings loaded from localStorage:', stored ? JSON.parse(stored) : null);
+      return stored ? JSON.parse(stored) : null;
     } catch (error) {
-      console.error('Management token retrieval failed:', error);
-      throw error;
+      console.error('Failed to get user settings:', error);
+      return null;
     }
   }
 }
