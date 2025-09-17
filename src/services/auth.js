@@ -8,8 +8,9 @@ class AuthService {
       clientId: import.meta.env.VITE_AUTH0_CLIENT_ID,
       authorizationParams: {
         redirect_uri: window.location.origin + '/callback',
-        scope: 'openid profile email',
-        response_type: 'code'
+        scope: 'openid profile email offline_access',
+        response_type: 'code',
+        audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/api/v2/`  // Add this line
       },
       useRefreshTokens: true,
       cacheLocation: 'localstorage'
@@ -22,7 +23,12 @@ class AuthService {
     try {
       console.log('Starting login with Auth0...');
       console.log('Redirect URI:', window.location.origin + '/callback');
-      await this.auth0.loginWithRedirect();
+      await this.auth0.loginWithRedirect({
+      authorizationParams: {
+        scope: 'openid profile email offline_access',
+        audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/api/v2/`
+      }
+    });
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -91,32 +97,55 @@ class AuthService {
     }
   }
 
-  // Helper method to sync user settings (for future use)
   async syncUserSettings(settings) {
     try {
-      const token = await this.getToken();
-      if (!token) {
-        throw new Error('No access token available');
-      }
-      
       const user = await this.getUser();
-      if (user) {
-        localStorage.setItem(`settings_${user.sub}`, JSON.stringify(settings));
-        console.log('Settings synced locally:', settings);
+      if (!user) {
+        localStorage.setItem('settings_guest', JSON.stringify(settings));
+        console.log('Settings synced for guest user');
+        return;
       }
+
+      localStorage.setItem(`settings_${user.sub}`, JSON.stringify(settings));
+      console.log('Settings synced for user:', user.email);
+      
     } catch (error) {
       console.error('Settings sync failed:', error);
       throw error;
     }
   }
 
-  // Helper method to get user settings
   async getUserSettings() {
     try {
       const user = await this.getUser();
-      if (!user) return null;
+      
+      let storageKey;
+      if (!user) {
+        storageKey = 'settings_guest';
+      } else {
+        storageKey = `settings_${user.sub}`;
+      }
 
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+
+      return null;
+      
+    } catch (error) {
+      console.error('Failed to get user settings:', error);
+      return null;
+    }
+  }
+
+  async getManagementToken() {
+    try {
+      const user = await this.getUser();
+      if (!user) return null;
+      
       const stored = localStorage.getItem(`settings_${user.sub}`);
+      console.log('Settings loaded from localStorage:', stored ? JSON.parse(stored) : null);
       return stored ? JSON.parse(stored) : null;
     } catch (error) {
       console.error('Failed to get user settings:', error);
