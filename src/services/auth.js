@@ -15,8 +15,15 @@ class AuthService {
       useRefreshTokens: true,
       cacheLocation: 'localstorage'
     });
-    
+    this.apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     this.user = null;
+
+
+    console.log('=== AUTH DEBUG ===');
+    console.log('Environment Mode:', import.meta.env.MODE);
+    console.log('Auth0 Domain:', import.meta.env.VITE_AUTH0_DOMAIN);
+    console.log('Auth0 Client ID:', import.meta.env.VITE_AUTH0_CLIENT_ID);
+    console.log('Redirect URI:', window.location.origin + '/callback');
   }
 
   async login() {
@@ -100,38 +107,71 @@ class AuthService {
   async syncUserSettings(settings) {
     try {
       const user = await this.getUser();
-      if (!user) {
+      const token = await this.getToken();
+      
+      if (!user || !token) {
         localStorage.setItem('settings_guest', JSON.stringify(settings));
         console.log('Settings synced for guest user');
         return;
       }
 
+      // Save to Auth0 via backend API
+      const response = await fetch(`${this.apiUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ settings })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend API error: ${response.status}`);
+      }
+
+      // Also save locally as backup
       localStorage.setItem(`settings_${user.sub}`, JSON.stringify(settings));
-      console.log('Settings synced for user:', user.email);
+      console.log('Settings synced to Auth0 via:', this.apiUrl);
       
     } catch (error) {
-      console.error('Settings sync failed:', error);
-      throw error;
+      console.error('Auth0 sync failed, using localStorage only:', error);
+      const user = await this.getUser();
+      if (user) {
+        localStorage.setItem(`settings_${user.sub}`, JSON.stringify(settings));
+      }
     }
   }
-
   async getUserSettings() {
     try {
       const user = await this.getUser();
+      const token = await this.getToken();
       
-      let storageKey;
-      if (!user) {
-        storageKey = 'settings_guest';
-      } else {
-        storageKey = `settings_${user.sub}`;
+      if (!user || !token) {
+        const stored = localStorage.getItem('settings_guest');
+        return stored ? JSON.parse(stored) : null;
       }
 
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        return JSON.parse(stored);
+      // Try Auth0 first
+      const response = await fetch(`${this.apiUrl}/api/settings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.settings) {
+          // Save to localStorage as backup
+          localStorage.setItem(`settings_${user.sub}`, JSON.stringify(result.settings));
+          console.log('Settings loaded from Auth0 via:', this.apiUrl);
+          return result.settings;
+        }
       }
 
-      return null;
+      // Fallback to localStorage
+      const stored = localStorage.getItem(`settings_${user.sub}`);
+      return stored ? JSON.parse(stored) : null;
       
     } catch (error) {
       console.error('Failed to get user settings:', error);
