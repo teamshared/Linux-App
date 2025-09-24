@@ -5,7 +5,7 @@ const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs } from './webview-handler.js';
-import { exec, spawn } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import "./Blocker.js"
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
@@ -296,40 +296,76 @@ app.on('open-url', (event, url) => {
   }
 });
 
+// SYSTEM PROXY FUNCTIONS
+function setSystemProxy(host, port, callback) {
+    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
+    execFile('python3', [scriptPath, 'set', host, port], (err, stdout, stderr) => {
+        if (err) {
+            console.error('Proxy set error:', stderr);
+            if (callback) callback(err, stderr);
+        } else {
+            console.log('Proxy set:', stdout);
+            if (callback) callback(null, stdout);
+        }
+    });
+}
+
+function unsetSystemProxy(callback) {
+    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
+    execFile('python3', [scriptPath, 'unset'], (err, stdout, stderr) => {
+        if (err) {
+            console.error('Proxy unset error:', stderr);
+            if (callback) callback(err, stderr);
+        } else {
+            console.log('Proxy unset:', stdout);
+            if (callback) callback(null, stdout);
+        }
+    });
+}
+
 // MITMPROXY BLOCKING FUNCTIONS
 function startMitmproxyBlocker(callback) {
     const scriptPath = join(__dirname, '../python/mitmproxy_blocker.py');
-    
-    console.log('Starting mitmproxy blocker...');
-    
-    mitmproxyProcess = spawn('mitmdump', [
-        '-s', scriptPath,
-        '--set', 'block_global=false'
-    ]);
+    const proxyHost = '127.0.0.1';
+    const proxyPort = 8080;
 
-    mitmproxyProcess.stdout.on('data', (data) => {
-        console.log(`mitmproxy: ${data}`);
+    setSystemProxy(proxyHost, proxyPort, (err, result) => {
+        if (err) {
+            callback(err, 'Failed to set system proxy');
+            return;
+        }
+
+        console.log('Starting mitmproxy blocker...');
+        
+        mitmproxyProcess = spawn('mitmdump', [
+            '-s', scriptPath,
+            '--set', 'block_global=false'
+        ]);
+
+        mitmproxyProcess.stdout.on('data', (data) => {
+            console.log(`mitmproxy: ${data}`);
+        });
+
+        mitmproxyProcess.stderr.on('data', (data) => {
+            console.error(`mitmproxy error: ${data}`);
+        });
+
+        mitmproxyProcess.on('close', (code) => {
+            console.log(`mitmproxy process exited with code ${code}`);
+            mitmproxyProcess = null;
+            isFocusActive = false;
+        });
+
+        mitmproxyProcess.on('error', (error) => {
+            console.error('Failed to start mitmproxy:', error);
+            callback(error, error.message);
+            return;
+        });
+
+        setTimeout(() => {
+            callback(null, 'mitmproxy blocker started');
+        }, 1000);
     });
-
-    mitmproxyProcess.stderr.on('data', (data) => {
-        console.error(`mitmproxy error: ${data}`);
-    });
-
-    mitmproxyProcess.on('close', (code) => {
-        console.log(`mitmproxy process exited with code ${code}`);
-        mitmproxyProcess = null;
-        isFocusActive = false;
-    });
-
-    mitmproxyProcess.on('error', (error) => {
-        console.error('Failed to start mitmproxy:', error);
-        callback(error, error.message);
-        return;
-    });
-
-    setTimeout(() => {
-        callback(null, 'mitmproxy blocker started');
-    }, 1000);
 }
 
 function stopMitmproxyBlocker() {
@@ -338,6 +374,13 @@ function stopMitmproxyBlocker() {
         mitmproxyProcess.kill('SIGTERM');
         mitmproxyProcess = null;
     }
+    unsetSystemProxy((err, result) => {
+        if (err) {
+            console.error('Failed to unset system proxy:', result);
+        } else {
+            console.log('System proxy unset:', result);
+        }
+    });
 }
 
 //Webiew Handling
