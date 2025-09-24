@@ -20,6 +20,9 @@ dist
 dist-react
 *.local
 
+#Python
+src/python/__pycache__
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
