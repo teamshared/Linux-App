@@ -13,45 +13,25 @@ class SimpleAuth0Sync {
     this.subscribers = new Map();
     this.cache = new Map();
     this.isInitialized = false;
-    this.setupAuth0Handlers();
-  }
-
-  setupAuth0Handlers() {
-    if (window.api?.onAuth0GetSettings) {
-        window.api.onAuth0GetSettings(async () => {
-        try {
-            const settings = await authService.getUserSettings();
-            window.api.sendAuth0SettingsResponse({ success: true, data: settings });
-        } catch (error) {
-            window.api.sendAuth0SettingsResponse({ success: false, error: error.message });
-        }
-        });
-    }
-
-    if (window.api?.onAuth0SaveSettings) {
-        window.api.onAuth0SaveSettings(async (settings) => {
-        try {
-            await authService.syncUserSettings(settings);
-            window.api.sendAuth0SaveResponse({ success: true });
-        } catch (error) {
-            window.api.sendAuth0SaveResponse({ success: false, error: error.message });
-        }
-        });
-    }
+    this.saveTimeout = null;
   }
 
   async initialize() {
     if (this.isInitialized) return;
 
     try {
-      const savedSettings = await window.api?.getSettings();
+      // Try to load from Focus Bear API
+      const savedSettings = await this.loadFromFocusBearAPI();
       
       if (savedSettings) {
         Object.entries(savedSettings).forEach(([key, value]) => {
-          this.cache.set(key, value);
+          if (key in SYNCED_STATES) {
+            this.cache.set(key, value);
+          }
         });
-        console.log('Loaded settings:', savedSettings);
+        console.log('Loaded settings from Focus Bear API:', savedSettings);
       } else {
+        // Use defaults if nothing saved
         Object.entries(SYNCED_STATES).forEach(([key, value]) => {
           this.cache.set(key, value);
         });
@@ -61,6 +41,7 @@ class SimpleAuth0Sync {
       this.isInitialized = true;
     } catch (error) {
       console.error('Failed to initialize settings:', error);
+      // Use defaults on error
       Object.entries(SYNCED_STATES).forEach(([key, value]) => {
         this.cache.set(key, value);
       });
@@ -68,17 +49,17 @@ class SimpleAuth0Sync {
     }
   }
 
-  async loadFromAuth0() {
+  async loadFromFocusBearAPI() {
     try {
-      const user = await authService.getUser();
-      if (!user) {
-        throw new Error('No authenticated user');
+      const token = await authService.getToken();
+      if (!token) {
+        throw new Error('No token available');
       }
 
-      const token = await authService.getManagementToken();
-      const domain = import.meta.env.VITE_AUTH0_DOMAIN;
+      const API_URL = 'https://api.focusbear.io/settings'; // Placeholder
       
-      const response = await fetch(`https://${domain}/api/v2/users/${user.sub}`, {
+      const response = await fetch(API_URL, {
+        method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -86,57 +67,53 @@ class SimpleAuth0Sync {
       });
 
       if (!response.ok) {
-        throw new Error(`Auth0 API error: ${response.status}`);
+        if (response.status === 404) {
+          // No settings saved yet
+          return null;
+        }
+        throw new Error(`API error: ${response.status}`);
       }
 
-      const userData = await response.json();
-      return userData.user_metadata?.focusbear_settings || null;
+      const data = await response.json();
+      console.log('Loaded from Focus Bear API:', data);
+      return data.settings || data; // Adjust based on their response format
+      
     } catch (error) {
-      console.error('Failed to load from Auth0:', error);
-      throw error;
+      console.error('Failed to load from Focus Bear API:', error);
+      return null;
     }
   }
 
-  async saveToAuth0(settings) {
+  async saveToFocusBearAPI(settings) {
     try {
-      const user = await authService.getUser();
-      if (!user) {
-        throw new Error('No authenticated user');
+      const token = await authService.getToken();
+      if (!token) {
+        throw new Error('No token available');
       }
 
-      const token = await authService.getManagementToken();
-      const domain = import.meta.env.VITE_AUTH0_DOMAIN;
 
-      const currentResponse = await fetch(`https://${domain}/api/v2/users/${user.sub}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const API_URL = 'https://api.focusbear.io/settings'; // Placeholder
 
-      const currentData = await currentResponse.json();
-      
-      const response = await fetch(`https://${domain}/api/v2/users/${user.sub}`, {
-        method: 'PATCH',
+      const response = await fetch(API_URL, {
+        method: 'POST', // or PUT - ask client
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          user_metadata: {
-            ...currentData.user_metadata,
-            focusbear_settings: settings
-          }
+          settings: settings // Adjust based on their expected format
         })
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to save to Auth0: ${response.status}`);
+        throw new Error(`Failed to save: ${response.status}`);
       }
 
-      console.log('Settings saved to Auth0');
+      console.log('Settings saved to Focus Bear API');
+      return true;
+      
     } catch (error) {
-      console.error('Failed to save to Auth0:', error);
+      console.error('Failed to save to Focus Bear API:', error);
       throw error;
     }
   }
@@ -148,11 +125,13 @@ class SimpleAuth0Sync {
   async setValue(key, value) {
     this.cache.set(key, value);
 
+    // Notify subscribers
     const subscribers = this.subscribers.get(key);
     if (subscribers) {
       subscribers.forEach(callback => callback(value));
     }
 
+    // Queue save with debouncing
     this.queueSave();
   }
 
@@ -165,8 +144,12 @@ class SimpleAuth0Sync {
           allSettings[key] = value;
         }
 
+        // Save to Focus Bear API
+        await this.saveToFocusBearAPI(allSettings);
+        
+        // Also save locally via IPC for offline access
         await window.api?.saveSettings(allSettings);
-        console.log('Settings saved');
+        
       } catch (error) {
         console.error('Failed to save settings:', error);
       }
@@ -197,7 +180,7 @@ class SimpleAuth0Sync {
 
   async forceSync() {
     try {
-      const settings = await this.loadFromAuth0();
+      const settings = await this.loadFromFocusBearAPI();
       if (settings) {
         Object.entries(settings).forEach(([key, value]) => {
           if (key in SYNCED_STATES) {
@@ -208,7 +191,7 @@ class SimpleAuth0Sync {
             }
           }
         });
-        console.log('Force sync completed from Auth0');
+        console.log('Force sync completed from Focus Bear API');
       }
     } catch (error) {
       console.error('Force sync failed:', error);
@@ -219,6 +202,7 @@ class SimpleAuth0Sync {
 
 const auth0Sync = new SimpleAuth0Sync();
 
+// React hooks
 export const useSyncedState = (key) => {
   if (!(key in SYNCED_STATES)) {
     throw new Error(`Unknown synced state: ${key}. Available: ${Object.keys(SYNCED_STATES).join(', ')}`);
@@ -251,13 +235,6 @@ export const useSyncedState = (key) => {
 export const useUrlList = () => {
   const [urlArray, setUrlArray, isLoading] = useSyncedState('urlList');
   
-  const urlString = urlArray.join('\n');
-  
-  const setUrlString = useCallback((newUrlString) => {
-    const newArray = newUrlString.split('\n').filter(url => url.trim());
-    setUrlArray(newArray);
-  }, [setUrlArray]);
-
   const addUrl = useCallback((url) => {
     if (url && !urlArray.includes(url)) {
       setUrlArray([...urlArray, url]);
@@ -270,20 +247,12 @@ export const useUrlList = () => {
   }, [urlArray, setUrlArray]);
 
   return {
-    urlString,
     urlArray, 
-    setUrlString,
     setUrlArray,
     addUrl,
     removeUrls,
     isLoading
   };
-};
-
-export const useForceSync = () => {
-  return useCallback(async () => {
-    await auth0Sync.forceSync();
-  }, []);
 };
 
 export { auth0Sync };

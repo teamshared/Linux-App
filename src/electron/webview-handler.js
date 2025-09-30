@@ -58,7 +58,7 @@ export function hideWebView(id, mainWindow) {
 export const webViewConfigs = {
     'edit_habits': {
         id: 'edit_habits',
-        url: 'https://settings.focusbear.io'
+        url: 'https://dashboard.focusbear.io/'
     },
     'courses': {
         id: 'courses',
@@ -98,10 +98,9 @@ export const webViewConfigs = {
         url: 'https://dashboard.focusbear.io/webview/survey'
     },
 
-
     'blocking_schedule': {
         id: 'blocking_schedule',
-        url: 'https://dashboard.focusbear.io/webview/blocking-schedule' 
+        url: 'https://dashboard.focusbear.io/' 
     }
 };
 
