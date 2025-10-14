@@ -130,6 +130,8 @@ app.on("ready", function(){
             mainWindow.focus();
         }
     });
+
+    testDesktopEnvironmentDetection();
 });
 
 ipcMain.on('quit-channel', function() {
@@ -296,6 +298,28 @@ app.on('open-url', (event, url) => {
   }
 });
 
+// Add this function to test desktop environment detection
+function testDesktopEnvironmentDetection() {
+    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
+    
+    console.log('=== TESTING DESKTOP ENVIRONMENT DETECTION ===');
+    
+    // Test the detection directly
+    execFile('python3', [scriptPath, 'detect'], (err, stdout, stderr) => {
+        if (err) {
+            console.error('Detection error:', stderr);
+        } else {
+            console.log('Detection result:', stdout);
+        }
+    });
+    
+    // Also test environment variables
+    console.log('Environment variables:');
+    console.log('XDG_CURRENT_DESKTOP:', process.env.XDG_CURRENT_DESKTOP);
+    console.log('DESKTOP_SESSION:', process.env.DESKTOP_SESSION);
+    console.log('XDG_MENU_PREFIX:', process.env.XDG_MENU_PREFIX);
+}
+
 // SYSTEM PROXY FUNCTIONS
 function setSystemProxy(host, port, callback) {
     const scriptPath = join(__dirname, '../python/set_system_proxy.py');
@@ -369,18 +393,47 @@ function startMitmproxyBlocker(callback) {
 }
 
 function stopMitmproxyBlocker() {
+    let proxyUnsetAttempted = false; // Flag to ensure proxy is unset only once
+
+    // 1. Stop mitmproxy
     if (mitmproxyProcess) {
         console.log('Stopping mitmproxy blocker...');
+        
+        // Use an event listener to run unset AFTER mitmproxy closes, 
+        // OR run it immediately if mitmproxy fails to stop.
+        
+        const cleanupAndUnset = () => {
+            if (!proxyUnsetAttempted) {
+                proxyUnsetAttempted = true;
+                unsetSystemProxy((err, result) => {
+                    if (err) {
+                        console.error('Failed to unset system proxy:', result);
+                    } else {
+                        console.log('System proxy unset:', result);
+                    }
+                });
+            }
+        };
+
+        // Ensure cleanup happens when the process ends (success or failure)
+        mitmproxyProcess.once('close', cleanupAndUnset);
+        mitmproxyProcess.once('error', cleanupAndUnset);
+
+        // Send kill signal (SIGTERM is preferred for graceful shutdown)
         mitmproxyProcess.kill('SIGTERM');
         mitmproxyProcess = null;
+        
+    } else {
+        // 2. If mitmproxy wasn't running, still try to unset the proxy just in case.
+        console.log('mitmproxy not running. Attempting proxy cleanup...');
+        unsetSystemProxy((err, result) => {
+            if (err) {
+                console.error('Failed to unset system proxy:', result);
+            } else {
+                console.log('System proxy unset:', result);
+            }
+        });
     }
-    unsetSystemProxy((err, result) => {
-        if (err) {
-            console.error('Failed to unset system proxy:', result);
-        } else {
-            console.log('System proxy unset:', result);
-        }
-    });
 }
 
 //Webiew Handling
