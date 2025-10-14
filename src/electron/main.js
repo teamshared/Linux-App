@@ -18,8 +18,10 @@ dotenv.config();
 let tray = null
 let focusBearView = null
 let mainWindow = null;
+let authWindow = null;
 let exitflag = false;
 const urlGrabber = new SimpleUrlGrabber();
+let pendingProtocolUrl = null;
 
 // Unified focus session state
 let isFocusActive = false;
@@ -44,16 +46,32 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
+    console.log('Second instance detected, commandLine:', commandLine);
+
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
-      
+
       const protocolUrl = commandLine.find(arg => arg.startsWith('focusbear://'));
       if (protocolUrl) {
-        mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
+        console.log('Found protocol URL in second instance:', protocolUrl);
+        if (mainWindow.webContents.isLoading()) {
+          mainWindow.webContents.once('did-finish-load', () => {
+            mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
+          });
+        } else {
+          mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
+        }
       }
     }
   });
+}
+
+console.log('App process.argv:', process.argv);
+const initialProtocolUrl = process.argv.find(arg => arg.startsWith('focusbear://'));
+if (initialProtocolUrl) {
+  console.log('Found protocol URL on startup:', initialProtocolUrl);
+  pendingProtocolUrl = initialProtocolUrl;
 }
 
 app.on("ready", function(){
@@ -61,7 +79,7 @@ app.on("ready", function(){
         autoHideMenuBar: true,
         height: 850,
         width: 1000,
-        show: false,
+        show: true,
         webviewTag: true,
         webPreferences: {
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
@@ -77,6 +95,14 @@ app.on("ready", function(){
     } else {
         mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'));
     }
+
+    mainWindow.webContents.once('did-finish-load', () => {
+        if (pendingProtocolUrl) {
+            console.log('Sending pending protocol URL to renderer:', pendingProtocolUrl);
+            mainWindow.webContents.send('auth-protocol-callback', pendingProtocolUrl);
+            pendingProtocolUrl = null;
+        }
+    });
 
     mainWindow.on('resize', () => {
         if (focusBearView && mainWindow.contentView) {
@@ -94,25 +120,22 @@ app.on("ready", function(){
     });
 
 
-    // Auth0 navigation handlers
+    // Prevent popups in main window
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        if (url.includes('auth0.com')) {
-            mainWindow.loadURL(url);
-            return { action: 'deny' };
-        }
         return { action: 'deny' };
     });
 
     mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
         console.log('Navigation attempt to:', navigationUrl);
-        
+
         if (navigationUrl.includes('auth0.com')) {
+            event.preventDefault();
             return;
         }
         if (navigationUrl.startsWith('file://') || navigationUrl.startsWith('http://localhost:5173')) {
             return;
         }
-    
+
         event.preventDefault();
     });
 
@@ -286,15 +309,82 @@ app.setAsDefaultProtocolClient('focusbear');
 
 app.on('open-url', (event, url) => {
   event.preventDefault();
-  console.log('=== MAIN PROCESS RECEIVED PROTOCOL URL ===');
+  console.log('=== MAIN PROCESS RECEIVED PROTOCOL URL (open-url event) ===');
   console.log('URL:', url);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    console.log('Sending to renderer process...');
-    mainWindow.webContents.send('auth-protocol-callback', url);
-  } else {
-    console.log('Main window not available!');
+
+  if (url.startsWith('focusbear://')) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log('Sending to renderer process...');
+      if (mainWindow.webContents.isLoading()) {
+        mainWindow.webContents.once('did-finish-load', () => {
+          mainWindow.webContents.send('auth-protocol-callback', url);
+        });
+      } else {
+        mainWindow.webContents.send('auth-protocol-callback', url);
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      console.log('Main window not available, storing URL for later');
+      pendingProtocolUrl = url;
+    }
   }
 });
+
+// AUTH WINDOW HANDLER
+function openAuthWindow(authUrl) {
+    if (authWindow) {
+        authWindow.focus();
+        return;
+    }
+
+    authWindow = new BrowserWindow({
+        width: 500,
+        height: 700,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            enableRemoteModule: false
+        },
+        autoHideMenuBar: true,
+        title: 'Focus Bear - Sign In'
+    });
+
+    authWindow.loadURL(authUrl);
+
+    authWindow.webContents.on('will-redirect', (event, url) => {
+        console.log('Auth window redirect:', url);
+        handleAuthRedirect(url);
+    });
+
+    authWindow.webContents.on('will-navigate', (event, url) => {
+        console.log('Auth window navigate:', url);
+        if (url.startsWith('focusbear://')) {
+            event.preventDefault();
+            handleAuthRedirect(url);
+        }
+    });
+
+    authWindow.on('closed', () => {
+        authWindow = null;
+    });
+}
+
+function handleAuthRedirect(url) {
+    if (url.startsWith('focusbear://')) {
+        console.log('Auth callback received:', url);
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('auth-protocol-callback', url);
+            mainWindow.show();
+            mainWindow.focus();
+        }
+
+        if (authWindow && !authWindow.isDestroyed()) {
+            authWindow.close();
+        }
+    }
+}
 
 // SYSTEM PROXY FUNCTIONS
 function setSystemProxy(host, port, callback) {
@@ -405,6 +495,11 @@ ipcMain.on('switch-webview', function(event, webViewId) {
 
 ipcMain.on('hide-all-webviews', function(event) {
     hideAllWebViews(mainWindow);
+})
+
+ipcMain.on('open-auth-window', function(event, url) {
+    console.log('Opening auth window with URL:', url);
+    openAuthWindow(url);
 })
 
 

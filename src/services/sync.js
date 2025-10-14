@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { authService } from '../services/auth.js';
+import { nativeAuthService } from '../services/nativeAuth.js';
 
 const SYNCED_STATES = {
   selectedBlockMode: 'manual',
@@ -51,7 +51,7 @@ class SimpleAuth0Sync {
 
   async loadFromFocusBearAPI() {
     try {
-      const token = await authService.getToken();
+      const token = await nativeAuthService.getToken();
       if (!token) {
         throw new Error('No token available');
       }
@@ -86,7 +86,7 @@ class SimpleAuth0Sync {
 
   async saveToFocusBearAPI(settings) {
     try {
-      const token = await authService.getToken();
+      const token = await nativeAuthService.getToken();
       if (!token) {
         throw new Error('No token available');
       }

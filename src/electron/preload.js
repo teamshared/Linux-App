@@ -117,8 +117,11 @@ const API = {
 
     sendAuth0SaveResponse: function(result) {
         ipcRenderer.send('auth0-save-response', result);
+    },
+
+    openAuthWindow: function(url) {
+        return ipcRenderer.send('open-auth-window', url);
     }
-    
 
 }
 
