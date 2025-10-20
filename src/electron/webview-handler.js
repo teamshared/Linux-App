@@ -2,14 +2,18 @@
 import { WebContentsView, session } from 'electron';
 
 const webViews = new Map();
+const webViewInjectionStatus = new Map();
 let currentActiveWebView = null;
 
 export function createWebView(config) {
-    const { id, url, mainWindow } = config;
-    
+    const { id, url, mainWindow, metadata } = config;
+
     if (webViews.has(id)) {
+        console.log(`[WebView Handler] Reusing existing webview: ${id}`);
         return webViews.get(id);
     }
+
+    console.log(`[WebView Handler] Creating new webview: ${id}`);
 
     const webView = new WebContentsView({
         webPreferences: {
@@ -19,9 +23,276 @@ export function createWebView(config) {
         }
     });
 
+    webViewInjectionStatus.set(id, {injected: false, needsReload: false});
+
+    if (metadata) {
+        webView.webContents.on('dom-ready', () => {
+            const status = webViewInjectionStatus.get(id);
+            if (!status.injected) {
+                console.log(`[WebView Handler] DOM ready for ${id}, injecting tokens...`);
+                injectAuthTokens(webView, id, metadata);
+                webViewInjectionStatus.set(id, {injected: true, needsReload: true});
+            } else if (status.needsReload) {
+                console.log(`[WebView Handler] Page reloaded with auth, calling window function for ${id}...`);
+                callWindowFunction(webView, id, metadata);
+                webViewInjectionStatus.set(id, {injected: true, needsReload: false});
+            }
+        });
+    }
+
     webView.webContents.loadURL(url);
+
+    webView.webContents.openDevTools({ mode: 'detach' });
+
     webViews.set(id, webView);
     return webView;
+}
+
+async function injectAuthTokens(webView, webViewId, metadata) {
+    const auth0ClientId = metadata.client_id;
+    const auth0CacheKey = `@@auth0spajs@@::${auth0ClientId}::default::openid profile email offline_access`;
+
+    console.log(`[WebView Handler] Injecting tokens for ${webViewId}:`);
+    console.log(`  - client_id: ${auth0ClientId}`);
+    console.log(`  - has access_token: ${!!metadata.access_token}`);
+    console.log(`  - has id_token: ${!!metadata.id_token}`);
+
+    const userDataJson = metadata.user ? JSON.stringify(metadata.user) : '{}';
+    const idToken = metadata.id_token || metadata.access_token;
+
+    const injectionConfig = getInjectionConfigForWebView(webViewId, metadata);
+    const serializedData = JSON.stringify(injectionConfig?.data || {});
+
+    const tokenInjectionScript = `
+        (function() {
+            console.log('[Focus Bear Native] Injecting authentication tokens');
+            console.log('[Focus Bear Native] Client ID: ${auth0ClientId}');
+
+            try {
+                Object.keys(localStorage).forEach(key => {
+                    if (key.includes('@@auth0spajs@@::undefined')) {
+                        console.log('[Focus Bear Native] Removing broken cache entry:', key);
+                        localStorage.removeItem(key);
+                    }
+                });
+
+                localStorage.setItem('focusbear_auth_data', '${serializedData.replace(/'/g, "\\'")}');
+                localStorage.setItem('focusbear_access_token', '${metadata.access_token}');
+                localStorage.setItem('focusbear_platform', 'linux');
+
+                const auth0Cache = {
+                    body: {
+                        client_id: '${auth0ClientId}',
+                        access_token: '${metadata.access_token}',
+                        id_token: '${idToken}',
+                        scope: 'openid profile email offline_access',
+                        expires_in: 86400,
+                        token_type: 'Bearer',
+                        decodedToken: {
+                            user: ${userDataJson}
+                        }
+                    },
+                    expiresAt: Math.floor(Date.now() / 1000) + 86400
+                };
+
+                localStorage.setItem('${auth0CacheKey}', JSON.stringify(auth0Cache));
+                console.log('[Focus Bear Native] Tokens injected successfully');
+                console.log('[Focus Bear Native] Auth0 cache key:', '${auth0CacheKey}');
+
+            } catch (error) {
+                console.error('[Focus Bear Native] Error injecting tokens:', error);
+            }
+        })();
+    `;
+
+    try {
+        await webView.webContents.executeJavaScript(tokenInjectionScript);
+        console.log(`[WebView Handler] Tokens injected for ${webViewId}, reloading...`);
+        await webView.webContents.reload();
+    } catch (err) {
+        console.error(`[WebView Handler] Failed to inject tokens for ${webViewId}:`, err);
+    }
+}
+
+async function callWindowFunction(webView, webViewId, metadata) {
+    const injectionConfig = getInjectionConfigForWebView(webViewId, metadata);
+
+    if (!injectionConfig) {
+        console.log(`[WebView Handler] No window function config for ${webViewId}`);
+        return;
+    }
+
+    const { functionName, data } = injectionConfig;
+    const serializedData = JSON.stringify(data);
+
+    console.log(`[WebView Handler] Calling window function for ${webViewId}: ${functionName}`);
+
+    const functionCallScript = `
+        (function() {
+            console.log('[Focus Bear Native] Attempting to call window function: ${functionName}');
+
+            const waitForAppLoaded = setInterval(() => {
+                if (window['${functionName}']) {
+                    console.log('[Focus Bear Native] Found ${functionName}, calling it now...');
+                    try {
+                        window['${functionName}'](${serializedData});
+                        console.log('[Focus Bear Native] Successfully called ${functionName}');
+                        clearInterval(waitForAppLoaded);
+                    } catch (error) {
+                        console.error('[Focus Bear Native] Error calling ${functionName}:', error);
+                        clearInterval(waitForAppLoaded);
+                    }
+                } else {
+                    console.log('[Focus Bear Native] Waiting for ${functionName}...');
+                }
+            }, 100);
+
+            setTimeout(() => {
+                clearInterval(waitForAppLoaded);
+                console.log('[Focus Bear Native] Timeout - stopped waiting for ${functionName}');
+            }, 10000);
+        })();
+    `;
+
+    try {
+        await webView.webContents.executeJavaScript(functionCallScript);
+        console.log(`[WebView Handler] Function call script executed for ${webViewId}`);
+    } catch (err) {
+        console.error(`[WebView Handler] Failed to call function for ${webViewId}:`, err);
+    }
+}
+
+function getInjectionConfigForWebView(webViewId, metadata) {
+    const {
+        access_token,
+        theme = 'DARK',
+        lang = 'en',
+        font = 'default',
+        flags = [],
+        tasks = '[]',
+        total_duration = 0,
+        intention = '',
+        brain_dump = ''
+    } = metadata;
+
+    const configs = {
+        'edit_habits': {
+            functionName: 'loadSettingsData',
+            data: {
+                access_token,
+                platform: 'linux',
+                font,
+                lang,
+                flags,
+                theme
+            }
+        },
+        'get_support': {
+            functionName: 'loadMetaDataFoGetSupport',
+            data: {
+                access_token,
+                font,
+                lang,
+                theme
+            }
+        },
+        'courses': {
+            functionName: 'loadMetaDataForEnrolledCourses',
+            data: {
+                access_token,
+                font,
+                lang,
+                theme
+            }
+        },
+        'upgrade-now': {
+            functionName: 'loadMetaDataForSubscription',
+            data: {
+                access_token,
+                type: 'linux',
+                lang,
+                font,
+                theme
+            }
+        },
+        'todo-player': {
+            functionName: 'loadMetaDataForToDoPlayer',
+            data: {
+                access_token,
+                platform: 'linux',
+                tasks,
+                total_duration,
+                lang,
+                font,
+                theme,
+                intention,
+                brain_dump
+            }
+        },
+        'todo-list': {
+            functionName: 'loadAccessTokenForToDo',
+            data: {
+                access_token,
+                platform: 'linux',
+                lang,
+                font,
+                theme
+            }
+        },
+        'focus-end': {
+            functionName: 'loadTasks',
+            data: {
+                access_token,
+                platform: 'linux',
+                tasks,
+                total_duration,
+                lang,
+                theme
+            }
+        },
+        'motivation': {
+            functionName: 'loadAccessTokenForInspirationPage',
+            data: {
+                access_token,
+                font,
+                lang,
+                theme,
+                flags,
+                motivation_type: 'desktop'
+            }
+        },
+        'stats': {
+            functionName: 'loadAccessTokenForStats',
+            data: {
+                access_token,
+                type: 'linux',
+                lang,
+                font,
+                theme
+            }
+        },
+        'survey': {
+            functionName: 'loadAccessTokenForSurvey',
+            data: {
+                access_token,
+                platform: 'linux',
+                lang
+            }
+        },
+        'blocking_schedule': {
+            functionName: 'loadSettingsData',
+            data: {
+                access_token,
+                platform: 'linux',
+                font,
+                lang,
+                flags,
+                theme
+            }
+        }
+    };
+
+    return configs[webViewId];
 }
 
 export function switchToWebView(id, mainWindow, bounds) {
@@ -100,7 +371,7 @@ export const webViewConfigs = {
 
     'blocking_schedule': {
         id: 'blocking_schedule',
-        url: 'https://dashboard.focusbear.io/' 
+        url: 'https://settings.focusbear.io'
     }
 };
 

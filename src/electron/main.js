@@ -2,7 +2,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs } from './webview-handler.js';
 import { exec, execFile, spawn } from 'child_process';
@@ -474,11 +474,11 @@ function stopMitmproxyBlocker() {
 }
 
 //Webiew Handling
-ipcMain.on('switch-webview', function(event, webViewId) {
+ipcMain.on('switch-webview', function(event, webViewId, metadata) {
     const config = webViewConfigs[webViewId];
     if (!config) return;
 
-    const webView = createWebView({ ...config, mainWindow });
+    const webView = createWebView({ ...config, mainWindow, metadata });
     const bounds = getWebviewContainerBounds();
 
     switch(webViewId) {
@@ -486,9 +486,7 @@ ipcMain.on('switch-webview', function(event, webViewId) {
             bounds.height = bounds.height * 0.46;
             break;
         case 'edit_habits':
-            // Keep default bounds
             break;
-        // Add other webview-specific sizing as needed
     }
     switchToWebView(webViewId, mainWindow, bounds);
 });

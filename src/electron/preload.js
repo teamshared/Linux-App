@@ -48,8 +48,8 @@ const API = {
     },
 
     //Webview Management
-    switchWebView: function(id) {
-        return ipcRenderer.send('switch-webview', id);
+    switchWebView: function(id, metadata) {
+        return ipcRenderer.send('switch-webview', id, metadata);
     },
 
     hideAllWebViews: function() {
@@ -85,12 +85,20 @@ const API = {
 
     // Auth0 protocol callback listener
     onAuthProtocolCallback: function(callback) {
-        ipcRenderer.on('auth-protocol-callback', function(event, url) {
+        ipcRenderer.removeAllListeners('auth-protocol-callback');
+
+        const handler = function(event, url) {
             console.log("=== PRELOAD RECEIVED CALLBACK ===");
             console.log("URL:", url);
             callback(url);
             console.log("preload called")
-        });
+        };
+
+        ipcRenderer.on('auth-protocol-callback', handler);
+
+        return () => {
+            ipcRenderer.removeListener('auth-protocol-callback', handler);
+        };
     },
     
     getSettings: function() {

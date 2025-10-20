@@ -90,7 +90,9 @@ const App = function() {
       }
     };
 
-    window.api.onAuthProtocolCallback(handleProtocolCallback);
+    const cleanup = window.api.onAuthProtocolCallback(handleProtocolCallback);
+
+    return cleanup;
   }, []);
 
   const initializeAuth = async function() {

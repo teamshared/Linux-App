@@ -68,6 +68,7 @@ class NativeAuthService {
         `client_id=${encodeURIComponent(this.clientId)}&` +
         `redirect_uri=${encodeURIComponent(this.redirectUri)}&` +
         `scope=${encodeURIComponent('openid profile email offline_access')}&` +
+        `audience=${encodeURIComponent('https://auth.focusbear.io/api/v2/')}&` +
         `state=${state}&` +
         `code_challenge=${codeChallenge}&` +
         `code_challenge_method=${codeChallengeMethod}`;
@@ -139,7 +140,8 @@ class NativeAuthService {
         client_id: this.clientId,
         code: code,
         code_verifier: codeVerifier,
-        redirect_uri: this.redirectUri
+        redirect_uri: this.redirectUri,
+        audience: 'https://auth.focusbear.io/api/v2/'
       })
     });
 
@@ -184,7 +186,8 @@ class NativeAuthService {
         body: JSON.stringify({
           grant_type: 'refresh_token',
           client_id: this.clientId,
-          refresh_token: this.refreshToken
+          refresh_token: this.refreshToken,
+          audience: 'https://auth.focusbear.io/api/v2/'
         })
       });
 
