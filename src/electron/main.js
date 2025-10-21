@@ -141,6 +141,8 @@ app.on("ready", function(){
             mainWindow.focus();
         }
     });
+
+    testDesktopEnvironmentDetection();
 });
 
 ipcMain.on('quit-channel', function() {
@@ -447,18 +449,47 @@ function startMitmproxyBlocker(callback) {
 }
 
 function stopMitmproxyBlocker() {
+    let proxyUnsetAttempted = false; // Flag to ensure proxy is unset only once
+
+    // 1. Stop mitmproxy
     if (mitmproxyProcess) {
         console.log('Stopping mitmproxy blocker...');
+        
+        // Use an event listener to run unset AFTER mitmproxy closes, 
+        // OR run it immediately if mitmproxy fails to stop.
+        
+        const cleanupAndUnset = () => {
+            if (!proxyUnsetAttempted) {
+                proxyUnsetAttempted = true;
+                unsetSystemProxy((err, result) => {
+                    if (err) {
+                        console.error('Failed to unset system proxy:', result);
+                    } else {
+                        console.log('System proxy unset:', result);
+                    }
+                });
+            }
+        };
+
+        // Ensure cleanup happens when the process ends (success or failure)
+        mitmproxyProcess.once('close', cleanupAndUnset);
+        mitmproxyProcess.once('error', cleanupAndUnset);
+
+        // Send kill signal (SIGTERM is preferred for graceful shutdown)
         mitmproxyProcess.kill('SIGTERM');
         mitmproxyProcess = null;
+        
+    } else {
+        // 2. If mitmproxy wasn't running, still try to unset the proxy just in case.
+        console.log('mitmproxy not running. Attempting proxy cleanup...');
+        unsetSystemProxy((err, result) => {
+            if (err) {
+                console.error('Failed to unset system proxy:', result);
+            } else {
+                console.log('System proxy unset:', result);
+            }
+        });
     }
-    unsetSystemProxy((err, result) => {
-        if (err) {
-            console.error('Failed to unset system proxy:', result);
-        } else {
-            console.log('System proxy unset:', result);
-        }
-    });
 }
 
 //Webiew Handling
