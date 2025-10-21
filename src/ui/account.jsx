@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { authService } from '../services/auth.js';
+import { nativeAuthService } from '../services/nativeAuth.js';
 import "./styles/account.css"
 
 const AccountPage = function(){
@@ -8,9 +8,7 @@ const AccountPage = function(){
     const handleLogout = async () => {
         setIsLoggingOut(true);
         try {
-            await authService.logout();
-            // The logout method will redirect to Auth0 logout, which will then redirect back to your app
-            // Your App.jsx will detect no user and show the login screen
+            await nativeAuthService.logout();
         } catch (error) {
             console.error('Logout failed:', error);
             setIsLoggingOut(false);

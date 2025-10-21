@@ -7,6 +7,7 @@ import MotivationPage from './motivation';
 import BlockingSchedule from './blocking-schedule'
 import AccountPage from './account';
 import Keywords_page from './keyword-page';
+import { nativeAuthService } from '../services/nativeAuth.js';
 
 const PreferencesPage = function({ user }) {
   const [activeTab, setActiveTab] = useState('Help');
@@ -14,16 +15,56 @@ const PreferencesPage = function({ user }) {
   const [activeBlocksTab, setActiveBlocksTab] = useState('Blocking Schedule');
 
   useEffect(() => {
-    const webViewId = getWebViewForCurrentTab();
-    
-    if (webViewId) {
-      // Show the appropriate webview
-      window.api.switchWebView?.(webViewId);
-    } else {
-      // Hide all webviews when showing React components
-      window.api.hideAllWebViews?.();
-    }
+    const switchWebViewWithAuth = async () => {
+      const webViewId = getWebViewForCurrentTab();
+
+      if (webViewId) {
+        const metadata = await buildWebViewMetadata();
+        window.api.switchWebView?.(webViewId, metadata);
+      } else {
+        window.api.hideAllWebViews?.();
+      }
+    };
+
+    switchWebViewWithAuth();
   }, [activeTab, activeSettingsTab, activeBlocksTab]);
+
+  const buildWebViewMetadata = async () => {
+    try {
+      const access_token = await nativeAuthService.getToken();
+      const id_token = nativeAuthService.idToken;
+      const client_id = nativeAuthService.clientId;
+      const user = nativeAuthService.getUser();
+
+      console.log('[Preferences] Building webview metadata:');
+      console.log('  - client_id:', client_id);
+      console.log('  - has access_token:', !!access_token);
+      console.log('  - has id_token:', !!id_token);
+      console.log('  - user email:', user?.email);
+
+      if (!client_id) {
+        console.error('[Preferences] WARNING: client_id is undefined!');
+      }
+
+      return {
+        access_token,
+        id_token,
+        client_id,
+        user,
+        theme: 'LIGHT',
+        lang: 'en',
+        font: 'default',
+        flags: [],
+        tasks: '[]',
+        total_duration: 0,
+        intention: '',
+        brain_dump: ''
+      };
+    } catch (error) {
+      console.error('Failed to build webview metadata:', error);
+      return null;
+    }
+  };
 
   // Helper function to determine which webview should be active
   const getWebViewForCurrentTab = () => {

@@ -2,9 +2,9 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
-import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs } from './webview-handler.js';
+import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn } from 'child_process';
 import "./Blocker.js"
 import { focusState } from './focusState.js';
@@ -12,13 +12,20 @@ import SimpleUrlGrabber from './simpleUrlGrabber.js';
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
 
-// Load environment variables
 dotenv.config();
+
+console.log('[Main Process] Starting Focus Bear...');
+console.log('[Main Process] App packaged:', app.isPackaged);
+console.log('[Main Process] App path:', app.getAppPath());
+console.log('[Main Process] User data path:', app.getPath('userData'));
+console.log('[Main Process] Node env:', process.env.NODE_ENV);
 
 let tray = null
 let focusBearView = null
 let mainWindow = null;
+let authWindow = null;
 let exitflag = false;
+let pendingProtocolUrl = null;
 const urlGrabber = new SimpleUrlGrabber();
 
 // Unified focus session state
@@ -47,11 +54,6 @@ if (!gotTheLock) {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
-      
-      const protocolUrl = commandLine.find(arg => arg.startsWith('focusbear://'));
-      if (protocolUrl) {
-        mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
-      }
     }
   });
 }
@@ -61,7 +63,7 @@ app.on("ready", function(){
         autoHideMenuBar: true,
         height: 850,
         width: 1000,
-        show: false,
+        show: true,
         webviewTag: true,
         webPreferences: {
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
@@ -78,10 +80,24 @@ app.on("ready", function(){
         mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'));
     }
 
+    mainWindow.webContents.once('did-finish-load', () => {
+        if (pendingProtocolUrl) {
+            console.log('Sending pending protocol URL to renderer:', pendingProtocolUrl);
+            mainWindow.webContents.send('auth-protocol-callback', pendingProtocolUrl);
+            pendingProtocolUrl = null;
+        }
+    });
+
     mainWindow.on('resize', () => {
-        if (focusBearView && mainWindow.contentView) {
-            const containerBounds = getWebviewContainerBounds();
-            focusBearView.setBounds(containerBounds);
+        const activeWebViewId = getCurrentActiveWebViewId();
+        if (activeWebViewId) {
+            let containerBounds = getWebviewContainerBounds();
+
+            if (activeWebViewId === 'blocking_schedule') {
+                containerBounds.height = containerBounds.height * 0.46;
+            }
+
+            resizeCurrentWebView(containerBounds);
         }
     });
 
@@ -94,25 +110,20 @@ app.on("ready", function(){
     });
 
 
-    // Auth0 navigation handlers
+    // Prevent popups in main window
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        if (url.includes('auth0.com')) {
-            mainWindow.loadURL(url);
-            return { action: 'deny' };
-        }
         return { action: 'deny' };
     });
 
     mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
         console.log('Navigation attempt to:', navigationUrl);
-        
-        if (navigationUrl.includes('auth0.com')) {
+
+        if (navigationUrl.startsWith('file://') ||
+            navigationUrl.startsWith('http://localhost:5173') ||
+            navigationUrl.includes('auth0.com')) {
             return;
         }
-        if (navigationUrl.startsWith('file://') || navigationUrl.startsWith('http://localhost:5173')) {
-            return;
-        }
-    
+
         event.preventDefault();
     });
 
@@ -288,36 +299,81 @@ app.setAsDefaultProtocolClient('focusbear');
 
 app.on('open-url', (event, url) => {
   event.preventDefault();
-  console.log('=== MAIN PROCESS RECEIVED PROTOCOL URL ===');
+  console.log('=== MAIN PROCESS RECEIVED PROTOCOL URL (open-url event) ===');
   console.log('URL:', url);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    console.log('Sending to renderer process...');
-    mainWindow.webContents.send('auth-protocol-callback', url);
-  } else {
-    console.log('Main window not available!');
+
+  if (url.startsWith('focusbear://')) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log('Sending to renderer process...');
+      if (mainWindow.webContents.isLoading()) {
+        mainWindow.webContents.once('did-finish-load', () => {
+          mainWindow.webContents.send('auth-protocol-callback', url);
+        });
+      } else {
+        mainWindow.webContents.send('auth-protocol-callback', url);
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      console.log('Main window not available, storing URL for later');
+      pendingProtocolUrl = url;
+    }
   }
 });
 
-// Add this function to test desktop environment detection
-function testDesktopEnvironmentDetection() {
-    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
-    
-    console.log('=== TESTING DESKTOP ENVIRONMENT DETECTION ===');
-    
-    // Test the detection directly
-    execFile('python3', [scriptPath, 'detect'], (err, stdout, stderr) => {
-        if (err) {
-            console.error('Detection error:', stderr);
-        } else {
-            console.log('Detection result:', stdout);
+// AUTH WINDOW HANDLER
+function openAuthWindow(authUrl) {
+    if (authWindow) {
+        authWindow.focus();
+        return;
+    }
+
+    authWindow = new BrowserWindow({
+        width: 500,
+        height: 700,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            enableRemoteModule: false
+        },
+        autoHideMenuBar: true,
+        title: 'Focus Bear - Sign In'
+    });
+
+    authWindow.loadURL(authUrl);
+
+    authWindow.webContents.on('will-redirect', (event, url) => {
+        console.log('Auth window redirect:', url);
+        handleAuthRedirect(url);
+    });
+
+    authWindow.webContents.on('will-navigate', (event, url) => {
+        console.log('Auth window navigate:', url);
+        if (url.startsWith('focusbear://')) {
+            event.preventDefault();
+            handleAuthRedirect(url);
         }
     });
-    
-    // Also test environment variables
-    console.log('Environment variables:');
-    console.log('XDG_CURRENT_DESKTOP:', process.env.XDG_CURRENT_DESKTOP);
-    console.log('DESKTOP_SESSION:', process.env.DESKTOP_SESSION);
-    console.log('XDG_MENU_PREFIX:', process.env.XDG_MENU_PREFIX);
+
+    authWindow.on('closed', () => {
+        authWindow = null;
+    });
+}
+
+function handleAuthRedirect(url) {
+    if (url.startsWith('focusbear://')) {
+        console.log('Auth callback received:', url);
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('auth-protocol-callback', url);
+            mainWindow.show();
+            mainWindow.focus();
+        }
+
+        if (authWindow && !authWindow.isDestroyed()) {
+            authWindow.close();
+        }
+    }
 }
 
 // SYSTEM PROXY FUNCTIONS
@@ -437,11 +493,22 @@ function stopMitmproxyBlocker() {
 }
 
 //Webiew Handling
-ipcMain.on('switch-webview', function(event, webViewId) {
-    const config = webViewConfigs[webViewId];
-    if (!config) return;
+ipcMain.on('switch-webview', function(event, webViewId, metadata) {
+    console.log(`[Main Process] switch-webview called for ${webViewId}`);
+    console.log(`[Main Process] Metadata:`, {
+        hasAccessToken: !!metadata?.access_token,
+        hasClientId: !!metadata?.client_id,
+        clientId: metadata?.client_id,
+        hasUser: !!metadata?.user
+    });
 
-    const webView = createWebView({ ...config, mainWindow });
+    const config = webViewConfigs[webViewId];
+    if (!config) {
+        console.error(`[Main Process] No config found for webViewId: ${webViewId}`);
+        return;
+    }
+
+    const webView = createWebView({ ...config, mainWindow, metadata });
     const bounds = getWebviewContainerBounds();
 
     switch(webViewId) {
@@ -449,15 +516,18 @@ ipcMain.on('switch-webview', function(event, webViewId) {
             bounds.height = bounds.height * 0.46;
             break;
         case 'edit_habits':
-            // Keep default bounds
             break;
-        // Add other webview-specific sizing as needed
     }
     switchToWebView(webViewId, mainWindow, bounds);
 });
 
 ipcMain.on('hide-all-webviews', function(event) {
     hideAllWebViews(mainWindow);
+})
+
+ipcMain.on('open-auth-window', function(event, url) {
+    console.log('Opening auth window with URL:', url);
+    openAuthWindow(url);
 })
 
 

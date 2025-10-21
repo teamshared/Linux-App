@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { authService } from '../services/auth.js';
+import { nativeAuthService } from '../services/nativeAuth.js';
 
 const SYNCED_STATES = {
   selectedBlockMode: 'manual',
-  selectedBlockMethod: 'hosts', 
+  selectedBlockMethod: 'hosts',
   selectedBearMode: 'cuddly',
   urlList: ['facebook.com', 'x.com']
 };
+
+const API_BASE_URL = 'https://api.focusbear.io';
 
 class SimpleAuth0Sync {
   constructor() {
@@ -14,34 +16,32 @@ class SimpleAuth0Sync {
     this.cache = new Map();
     this.isInitialized = false;
     this.saveTimeout = null;
+    this.rawAPIData = null;
   }
 
   async initialize() {
     if (this.isInitialized) return;
 
     try {
-      // Try to load from Focus Bear API
       const savedSettings = await this.loadFromFocusBearAPI();
-      
+
       if (savedSettings) {
         Object.entries(savedSettings).forEach(([key, value]) => {
           if (key in SYNCED_STATES) {
             this.cache.set(key, value);
           }
         });
-        console.log('Loaded settings from Focus Bear API:', savedSettings);
+        console.log('[Sync] Loaded settings from Focus Bear API:', savedSettings);
       } else {
-        // Use defaults if nothing saved
         Object.entries(SYNCED_STATES).forEach(([key, value]) => {
           this.cache.set(key, value);
         });
-        console.log('Using default settings');
+        console.log('[Sync] Using default settings');
       }
 
       this.isInitialized = true;
     } catch (error) {
-      console.error('Failed to initialize settings:', error);
-      // Use defaults on error
+      console.error('[Sync] Failed to initialize settings:', error);
       Object.entries(SYNCED_STATES).forEach(([key, value]) => {
         this.cache.set(key, value);
       });
@@ -51,13 +51,15 @@ class SimpleAuth0Sync {
 
   async loadFromFocusBearAPI() {
     try {
-      const token = await authService.getToken();
+      const token = await nativeAuthService.getToken();
       if (!token) {
-        throw new Error('No token available');
+        console.log('[Sync] No token available for API call');
+        return null;
       }
 
-      const API_URL = 'https://api.focusbear.io/settings'; // Placeholder
-      
+      const API_URL = `${API_BASE_URL}/user-local-device-settings`;
+
+      console.log('[Sync] Fetching settings from API...');
       const response = await fetch(API_URL, {
         method: 'GET',
         headers: {
@@ -68,52 +70,102 @@ class SimpleAuth0Sync {
 
       if (!response.ok) {
         if (response.status === 404) {
-          // No settings saved yet
+          console.log('[Sync] No settings found on server (404)');
           return null;
         }
         throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('Loaded from Focus Bear API:', data);
-      return data.settings || data; // Adjust based on their response format
-      
+      console.log('[Sync] Raw API response:', data);
+
+      this.rawAPIData = data;
+
+      const macOSSettings = data.MacOS;
+      if (!macOSSettings) {
+        console.log('[Sync] No MacOS key in response');
+        return null;
+      }
+
+      const parsedMacOS = typeof macOSSettings === 'string'
+        ? JSON.parse(macOSSettings)
+        : macOSSettings;
+
+      console.log('[Sync] Parsed MacOS settings:', parsedMacOS);
+
+      const mappedSettings = {};
+
+      if (parsedMacOS.kArrBlockedUrls && Array.isArray(parsedMacOS.kArrBlockedUrls)) {
+        mappedSettings.urlList = parsedMacOS.kArrBlockedUrls;
+      }
+
+      if (typeof parsedMacOS.kCuddlyModeEnabled === 'boolean') {
+        mappedSettings.selectedBearMode = parsedMacOS.kCuddlyModeEnabled ? 'cuddly' : 'grizzly';
+      }
+
+      console.log('[Sync] Mapped settings:', mappedSettings);
+      return mappedSettings;
+
     } catch (error) {
-      console.error('Failed to load from Focus Bear API:', error);
+      console.error('[Sync] Failed to load from Focus Bear API:', error);
       return null;
     }
   }
 
   async saveToFocusBearAPI(settings) {
     try {
-      const token = await authService.getToken();
+      const token = await nativeAuthService.getToken();
       if (!token) {
+        console.error('[Sync] No token available for save');
         throw new Error('No token available');
       }
 
+      const API_URL = `${API_BASE_URL}/user-local-device-settings`;
 
-      const API_URL = 'https://api.focusbear.io/settings'; // Placeholder
+      let baseData = this.rawAPIData || {};
+
+      const macOSSettings = baseData.MacOS;
+      let parsedMacOS = {};
+
+      if (macOSSettings) {
+        parsedMacOS = typeof macOSSettings === 'string'
+          ? JSON.parse(macOSSettings)
+          : { ...macOSSettings };
+      }
+
+      if (settings.urlList) {
+        parsedMacOS.kArrBlockedUrls = settings.urlList;
+      }
+
+      if (settings.selectedBearMode) {
+        parsedMacOS.kCuddlyModeEnabled = settings.selectedBearMode === 'cuddly';
+      }
+
+      baseData.MacOS = parsedMacOS;
+
+      console.log('[Sync] Saving to API:', baseData);
 
       const response = await fetch(API_URL, {
-        method: 'POST', // or PUT - ask client
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          settings: settings // Adjust based on their expected format
-        })
+        body: JSON.stringify(baseData)
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Sync] API save failed:', response.status, errorText);
         throw new Error(`Failed to save: ${response.status}`);
       }
 
-      console.log('Settings saved to Focus Bear API');
+      console.log('[Sync] Settings saved to Focus Bear API successfully');
+      this.rawAPIData = baseData;
       return true;
-      
+
     } catch (error) {
-      console.error('Failed to save to Focus Bear API:', error);
+      console.error('[Sync] Failed to save to Focus Bear API:', error);
       throw error;
     }
   }
