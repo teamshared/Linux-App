@@ -13,9 +13,9 @@ const API = {
         callback(message);})
     },
 
-    showWebView: function(id, tab) { return ipcRenderer.send('show-webview', id, tab); },
-    hideWebView: function(id) { return ipcRenderer.send('hide-webview', id); },
-    updateWebviewBounds: function(id, tab) { return ipcRenderer.send('update-webview-bounds', id, tab); },
+
+    hideAllViews: function() {return ipcRenderer.send('hide-all-webview')},
+    // updateWebviewBounds: function(id, tab) { return ipcRenderer.send('update-webview-bounds', id, tab); },
 
     showPreferences: function() { return ipcRenderer.send('show-preferences'); },
 
@@ -47,6 +47,15 @@ const API = {
         });
     },
 
+    //Webview Management
+    switchWebView: function(id, metadata) {
+        return ipcRenderer.send('switch-webview', id, metadata);
+    },
+
+    hideAllWebViews: function() {
+        return ipcRenderer.send('hide-all-webviews');
+    },
+    //
     
     onFocusSessionResult: function(callback) {
         ipcRenderer.on('focus-session-result', function (event, message) {
@@ -76,12 +85,50 @@ const API = {
 
     // Auth0 protocol callback listener
     onAuthProtocolCallback: function(callback) {
-        ipcRenderer.on('auth-protocol-callback', function(event, url) {
+        ipcRenderer.removeAllListeners('auth-protocol-callback');
+
+        const handler = function(event, url) {
             console.log("=== PRELOAD RECEIVED CALLBACK ===");
             console.log("URL:", url);
             callback(url);
             console.log("preload called")
+        };
+
+        ipcRenderer.on('auth-protocol-callback', handler);
+
+        return () => {
+            ipcRenderer.removeListener('auth-protocol-callback', handler);
+        };
+    },
+    
+    getSettings: function() {
+        return ipcRenderer.invoke('get-settings');
+    },
+
+    saveSettings: function(settings) {
+        return ipcRenderer.invoke('save-settings', settings);
+    },
+
+    onAuth0GetSettings: function(callback) {
+        ipcRenderer.on('auth0-get-settings', callback);
+    },
+
+    onAuth0SaveSettings: function(callback) {
+        ipcRenderer.on('auth0-save-settings', (event, settings) => {
+            callback(settings);
         });
+    },
+
+    sendAuth0SettingsResponse: function(result) {
+        ipcRenderer.send('auth0-settings-response', result);
+    },
+
+    sendAuth0SaveResponse: function(result) {
+        ipcRenderer.send('auth0-save-response', result);
+    },
+
+    openAuthWindow: function(url) {
+        return ipcRenderer.send('open-auth-window', url);
     }
 
 }

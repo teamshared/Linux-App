@@ -1,87 +1,104 @@
 import React, { useState, useEffect } from 'react';
 import Preferences from './preferences.jsx';
-import { authService } from '../services/auth.js';
+import { nativeAuthService } from '../services/nativeAuth.js';
+import { auth0Sync } from '../services/sync.js';
 
 const App = function() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('idle');
 
-    // Add this after your state declarations
+  // Add this after your state declarations
   useEffect(() => {
     console.log('App state changed:', { 
       user: !!user, 
       isLoading, 
       isAuthenticating,
+      settingsLoaded,
+      syncStatus,
       currentPath: window.location.pathname,
       currentSearch: window.location.search
     });
-  }, [user, isLoading, isAuthenticating]);
+  }, [user, isLoading, isAuthenticating, settingsLoaded, syncStatus]);
 
   useEffect(() => {
     initializeAuth();
-    
-    // Listen for auth success/error events
-    const handleAuthSuccess = (event) => {
-      setUser(event.detail);
-      setIsAuthenticating(false);
-    };
-    
-    const handleAuthError = (event) => {
-      console.error('Auth error:', event.detail);
-      setIsAuthenticating(false);
-      // Don't show alert for auto-login failures, just stay on login screen
-    };
-    
-    window.addEventListener('auth-success', handleAuthSuccess);
-    window.addEventListener('auth-error', handleAuthError);
-    
-    return () => {
-      window.removeEventListener('auth-success', handleAuthSuccess);
-      window.removeEventListener('auth-error', handleAuthError);
-    };
   }, []);
 
+
   const initializeAuth = async function() {
-    try {    
-      // Check for callback first
+    try {
       if (window.location.pathname === '/callback' || window.location.search.includes('code=')) {
-        console.log('Processing auth callback...');
-        await authService.handleRedirectCallback();
-        
-        // After successful callback, check auth status
-        const isAuthenticated = await authService.isAuthenticated();
-        if (isAuthenticated) {
-          const userData = await authService.getUser();
-          setUser(userData);
-          setIsAuthenticating(false);
-          return; // Exit early after successful callback
-        }
-      }
-      
-      // Check authentication status for normal app load
-      const isAuthenticated = await authService.isAuthenticated();
-      if (isAuthenticated) {
-        const userData = await authService.getUser();
-        setUser(userData);
-      } else {
-        // Only auto-login if we're not processing a callback
-        console.log('User not authenticated, starting auto-login...');
+        console.log('[App] Processing auth callback...');
         setIsAuthenticating(true);
-        await authService.login();
+
+        const userData = await nativeAuthService.handleRedirectCallback();
+        setUser(userData);
+        setIsAuthenticating(false);
+
+        setSyncStatus('loading');
+        await initializeCloudSync();
+        setSyncStatus('synced');
+        return;
+      }
+
+      const isAuthenticated = await nativeAuthService.isAuthenticated();
+
+      if (isAuthenticated) {
+        const userData = nativeAuthService.getUser();
+        setUser(userData);
+
+        setSyncStatus('loading');
+        await initializeCloudSync();
+        setSyncStatus('synced');
+      } else {
+        console.log('[App] User not authenticated, starting auto-login...');
+        setIsAuthenticating(true);
+        await nativeAuthService.login();
       }
     } catch (error) {
-      console.error('Auth initialization failed:', error);
+      console.error('[App] Auth initialization failed:', error);
       setIsAuthenticating(false);
+      setSettingsLoaded(false);
+      setSyncStatus('error');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const initializeCloudSync = async function() {
+    try {
+      console.log('Initializing cloud sync...');
+      
+      // Initialize the cloud sync manager
+      await auth0Sync.initialize();
+      
+      // Load initial settings and send to main process
+      const allStates = auth0Sync.getAllSettings();
+      console.log('Cloud sync initialized with states:', allStates);
+      
+      // Send URL list to main process
+      if (allStates.urlList && window.api?.exportList) {
+        const urlString = allStates.urlList.join('\n');
+        window.api.exportList(urlString);
+      }
+      
+      setSettingsLoaded(true);
+    } catch (error) {
+      console.error('Cloud sync initialization failed:', error);
+      setSettingsLoaded(true); // Continue with defaults
+      throw error;
+    }
+  };
+
   const handleManualLogin = async () => {
     setIsAuthenticating(true);
+    setSettingsLoaded(false);
+    setSyncStatus('idle');
     try {
-      await authService.login();
+      await nativeAuthService.login();
     } catch (error) {
       console.error('Login failed:', error);
       setIsAuthenticating(false);
@@ -90,15 +107,29 @@ const App = function() {
 
   const handleLogout = async () => {
     try {
-      await authService.logout();
+      await nativeAuthService.logout();
       setUser(null);
+      setSettingsLoaded(false);
+      setSyncStatus('idle');
     } catch (error) {
       console.error('Logout failed:', error);
     }
   };
 
-  // Loading state - checking authentication
-  if (isLoading) {
+  const handleForceSync = async () => {
+    try {
+      setSyncStatus('syncing');
+      await auth0Sync.forceSync();
+      setSyncStatus('synced');
+      alert('Settings synced successfully from cloud!');
+    } catch (error) {
+      setSyncStatus('error');
+      alert('Sync failed. Please check your connection and try again.');
+    }
+  };
+
+  // Loading state - checking authentication or settings
+  if (isLoading || (user && !settingsLoaded)) {
     return (
       <div style={{ 
         display: 'flex', 
@@ -108,7 +139,14 @@ const App = function() {
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '18px', marginBottom: '10px' }}>Focus Bear</div>
-          <div style={{ fontSize: '14px', color: '#666' }}>Checking authentication...</div>
+          <div style={{ fontSize: '14px', color: '#666' }}>
+            {isLoading ? 'Checking authentication...' : 'Loading settings from cloud...'}
+          </div>
+          {syncStatus === 'loading' && (
+            <div style={{ fontSize: '12px', color: '#999', marginTop: '5px' }}>
+              Syncing with Auth0...
+            </div>
+          )}
         </div>
       </div>
     );
@@ -153,7 +191,7 @@ const App = function() {
           ) : (
             <div>
               <p style={{ marginBottom: '20px', color: '#666' }}>
-                Sign in to access your settings and features
+                Sign in to access your settings and sync across devices
               </p>
               <p style={{ marginBottom: '30px', color: '#888', fontSize: '14px' }}>
                 Authentication failed or was cancelled. Try again:
@@ -179,10 +217,27 @@ const App = function() {
     );
   }
 
+  // Get sync status display
+  const getSyncStatusDisplay = () => {
+    switch (syncStatus) {
+      case 'loading':
+      case 'syncing':
+        return { text: '☁️ Syncing...', color: '#007bff' };
+      case 'synced':
+        return { text: '☁️ Cloud synced', color: '#28a745' };
+      case 'error':
+        return { text: '☁️ Sync error', color: '#dc3545' };
+      default:
+        return { text: '☁️ Local only', color: '#6c757d' };
+    }
+  };
+
+  const statusDisplay = getSyncStatusDisplay();
+
   // Authenticated - show main app with preferences
   return (
     <div>
-      {/* Auth status bar */}
+      {/* Auth status bar with cloud sync status */}
       <div style={{
         padding: '10px 20px',
         backgroundColor: '#e8f5e8',
@@ -193,21 +248,49 @@ const App = function() {
       }}>
         <span style={{ fontSize: '14px' }}>
           Signed in as: <strong>{user.email || user.name}</strong>
+          <span style={{ 
+            marginLeft: '15px', 
+            color: statusDisplay.color, 
+            fontSize: '12px' 
+          }}>
+            {statusDisplay.text}
+          </span>
         </span>
-        <button 
-          onClick={handleLogout}
-          style={{
-            padding: '4px 12px',
-            backgroundColor: '#dc3545',
-            color: 'white',
-            border: 'none',
-            borderRadius: '3px',
-            cursor: 'pointer',
-            fontSize: '12px'
-          }}
-        >
-          Sign out
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {/* Force sync button */}
+          <button 
+            onClick={handleForceSync}
+            disabled={syncStatus === 'syncing' || syncStatus === 'loading'}
+            style={{
+              padding: '4px 8px',
+              backgroundColor: syncStatus === 'syncing' ? '#6c757d' : '#17a2b8',
+              color: 'white',
+              border: 'none',
+              borderRadius: '3px',
+              cursor: (syncStatus === 'syncing' || syncStatus === 'loading') ? 'not-allowed' : 'pointer',
+              fontSize: '11px',
+              opacity: (syncStatus === 'syncing' || syncStatus === 'loading') ? 0.6 : 1
+            }}
+            title="Force sync all settings from cloud"
+          >
+            {syncStatus === 'syncing' ? 'Syncing...' : 'Sync'}
+          </button>
+          
+          <button 
+            onClick={handleLogout}
+            style={{
+              padding: '4px 12px',
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '3px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
       
       {/* Main app content - directly show preferences */}
