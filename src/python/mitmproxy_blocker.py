@@ -149,6 +149,22 @@ def load_block_page(block_type: str, match_value: str) -> str:
     
     return html
 
+# ------------------- HELPER: EXTRACT PAGE TITLE -------------------
+def extract_page_title(content: bytes) -> str:
+    """Extract page title from HTML content."""
+    try:
+        content_str = content.decode('utf-8', errors='ignore')
+        # Simple regex to find the title tag content
+        title_match = re.search(r'<title[^>]*>(.*?)</title>', content_str, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            title = title_match.group(1).strip()
+            # Remove extra whitespace and newlines
+            title = re.sub(r'\s+', ' ', title)
+            return title.lower()
+    except Exception as e:
+        ctx.log.debug(f"Error extracting title: {e}")
+    return ""
+
 # ------------------- INITIALIZE BLOCKLISTS -------------------
 def load(layer: str) -> None:
     """Run once when mitmproxy starts: load initial rules."""
@@ -193,6 +209,36 @@ def request(flow: http.HTTPFlow) -> None:
             flow.response = http.Response.make(
                 200, 
                 load_block_page(block_type="keyword", match_value=keyword),
+                {"Content-Type": "text/html"}
+            )
+            return
+
+# ------------------- RESPONSE HANDLING FOR PAGE TITLE CHECK -------------------
+def response(flow: http.HTTPFlow) -> None:
+    """Check page titles for blocked keywords after receiving response."""
+    global blocked_keywords
+    
+    # Only check HTML responses
+    content_type = flow.response.headers.get("Content-Type", "").lower()
+    if "text/html" not in content_type:
+        return
+    
+    # Skip if response content is empty or too large
+    if not flow.response.content or len(flow.response.content) > 10 * 1024 * 1024:  # 10MB limit
+        return
+    
+    # Extract page title
+    page_title = extract_page_title(flow.response.content)
+    if not page_title:
+        return
+    
+    # Check for blocked keywords in page title
+    for keyword in blocked_keywords:
+        if keyword in page_title:
+            ctx.log.info(f"Blocking page title (keyword: {keyword}): {page_title[:100]}...")
+            flow.response = http.Response.make(
+                200, 
+                load_block_page(block_type="keyword in page title", match_value=keyword),
                 {"Content-Type": "text/html"}
             )
             return
