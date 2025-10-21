@@ -51,7 +51,7 @@ const PreferencesPage = function({ user }) {
         id_token,
         client_id,
         user,
-        theme: 'DARK',
+        theme: 'LIGHT',
         lang: 'en',
         font: 'default',
         flags: [],

@@ -4,7 +4,24 @@ class NativeAuthService {
   constructor() {
     this.domain = import.meta.env.VITE_AUTH0_DOMAIN;
     this.clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-    this.redirectUri = 'focusbear://callback';
+
+    const isDev = import.meta.env.DEV;
+    this.redirectUri = isDev
+      ? 'http://localhost:5173/callback'
+      : `${window.location.origin}/callback`;
+
+    console.log('[NativeAuth] Initializing with config:');
+    console.log('  - Domain:', this.domain);
+    console.log('  - Client ID:', this.clientId);
+    console.log('  - Redirect URI:', this.redirectUri);
+    console.log('  - Is packaged:', !isDev);
+
+    if (!this.domain || !this.clientId) {
+      console.error('[NativeAuth] CRITICAL: Missing Auth0 configuration!');
+      console.error('  - Domain:', this.domain);
+      console.error('  - Client ID:', this.clientId);
+      console.error('  - This will cause authentication to fail in packaged app');
+    }
 
     this.accessToken = null;
     this.refreshToken = null;
@@ -55,7 +72,7 @@ class NativeAuthService {
 
   async login() {
     try {
-      console.log('Starting Native PKCE login flow...');
+      console.log('[NativeAuth] Starting PKCE login flow...');
 
       const { codeVerifier, codeChallenge, codeChallengeMethod } = await generatePKCEPair();
       const state = generateState();
@@ -73,27 +90,32 @@ class NativeAuthService {
         `code_challenge=${codeChallenge}&` +
         `code_challenge_method=${codeChallengeMethod}`;
 
-      if (window.api?.openAuthWindow) {
-        window.api.openAuthWindow(authUrl);
-      } else {
-        window.open(authUrl, '_blank');
-      }
+      console.log('[NativeAuth] Redirecting to Auth0...');
+      window.location.href = authUrl;
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('[NativeAuth] Login failed:', error);
       throw error;
     }
   }
 
-  async handleCallback(callbackUrl) {
+  async handleRedirectCallback() {
     try {
-      console.log('Handling auth callback:', callbackUrl);
+      console.log('[NativeAuth] Handling redirect callback...');
+      console.log('[NativeAuth] Current URL:', window.location.href);
 
-      const url = new URL(callbackUrl);
-      const code = url.searchParams.get('code');
-      const state = url.searchParams.get('state');
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
 
       const storedState = sessionStorage.getItem('pkce_state');
       const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
+
+      console.log('[NativeAuth] Callback params:', {
+        hasCode: !!code,
+        hasState: !!state,
+        hasStoredState: !!storedState,
+        hasCodeVerifier: !!codeVerifier
+      });
 
       if (!state || state !== storedState) {
         throw new Error('State mismatch - possible CSRF attack');
@@ -121,10 +143,12 @@ class NativeAuthService {
       sessionStorage.removeItem('pkce_code_verifier');
       sessionStorage.removeItem('pkce_state');
 
-      console.log('Authentication successful');
+      window.history.replaceState({}, document.title, '/');
+
+      console.log('[NativeAuth] Authentication successful');
       return this.user;
     } catch (error) {
-      console.error('Callback handling failed:', error);
+      console.error('[NativeAuth] Callback handling failed:', error);
       throw error;
     }
   }
@@ -255,17 +279,18 @@ class NativeAuthService {
     try {
       this.clearTokens();
 
+      const returnUrl = import.meta.env.DEV
+        ? 'http://localhost:5173'
+        : window.location.origin;
+
       const logoutUrl = `https://${this.domain}/v2/logout?` +
         `client_id=${encodeURIComponent(this.clientId)}&` +
-        `returnTo=${encodeURIComponent('focusbear://logout')}`;
+        `returnTo=${encodeURIComponent(returnUrl)}`;
 
-      if (window.api?.openAuthWindow) {
-        window.api.openAuthWindow(logoutUrl);
-      } else {
-        window.open(logoutUrl, '_blank');
-      }
+      console.log('[NativeAuth] Logging out from Auth0, redirecting to:', logoutUrl);
+      window.location.href = logoutUrl;
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error('[NativeAuth] Logout failed:', error);
       throw error;
     }
   }

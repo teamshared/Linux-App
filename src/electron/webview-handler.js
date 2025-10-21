@@ -1,5 +1,5 @@
 // Enhanced webview-handler.js with optimized management
-import { WebContentsView, session } from 'electron';
+import { WebContentsView, session, app } from 'electron';
 
 const webViews = new Map();
 const webViewInjectionStatus = new Map();
@@ -19,11 +19,27 @@ export function createWebView(config) {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            session: session.fromPartition(`persist:dashboard`)
+            session: session.fromPartition(`persist:dashboard`),
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+            backgroundColor: '#ffffff'
         }
     });
 
+    webView.setBackgroundColor('#ffffff');
+
     webViewInjectionStatus.set(id, {injected: false, needsReload: false});
+
+    webView.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        const headers = details.responseHeaders;
+        if (headers['Content-Security-Policy']) {
+            delete headers['Content-Security-Policy'];
+        }
+        if (headers['content-security-policy']) {
+            delete headers['content-security-policy'];
+        }
+        callback({ responseHeaders: headers });
+    });
 
     if (metadata) {
         webView.webContents.on('dom-ready', () => {
@@ -38,7 +54,15 @@ export function createWebView(config) {
                 webViewInjectionStatus.set(id, {injected: true, needsReload: false});
             }
         });
+
+        webView.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+            console.error(`[WebView Handler] Failed to load ${id}:`, errorCode, errorDescription);
+        });
     }
+
+    webView.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        console.log(`[WebView ${id} Console]:`, message);
+    });
 
     webView.webContents.loadURL(url);
 
@@ -50,6 +74,18 @@ export function createWebView(config) {
 
 async function injectAuthTokens(webView, webViewId, metadata) {
     const auth0ClientId = metadata.client_id;
+
+    if (!auth0ClientId) {
+        console.error(`[WebView Handler] CRITICAL: client_id is undefined for ${webViewId}!`);
+        console.error(`[WebView Handler] Metadata received:`, metadata);
+        return;
+    }
+
+    if (!metadata.access_token) {
+        console.error(`[WebView Handler] CRITICAL: access_token is missing for ${webViewId}!`);
+        return;
+    }
+
     const auth0CacheKey = `@@auth0spajs@@::${auth0ClientId}::default::openid profile email offline_access`;
 
     console.log(`[WebView Handler] Injecting tokens for ${webViewId}:`);
@@ -150,7 +186,7 @@ async function callWindowFunction(webView, webViewId, metadata) {
             setTimeout(() => {
                 clearInterval(waitForAppLoaded);
                 console.log('[Focus Bear Native] Timeout - stopped waiting for ${functionName}');
-            }, 10000);
+            }, 30000);
         })();
     `;
 
@@ -165,7 +201,7 @@ async function callWindowFunction(webView, webViewId, metadata) {
 function getInjectionConfigForWebView(webViewId, metadata) {
     const {
         access_token,
-        theme = 'DARK',
+        theme = 'LIGHT',
         lang = 'en',
         font = 'default',
         flags = [],
@@ -324,6 +360,21 @@ export function hideWebView(id, mainWindow) {
     if (webView === currentActiveWebView) {
         hideAllWebViews(mainWindow);
     }
+}
+
+export function resizeCurrentWebView(bounds) {
+    if (currentActiveWebView) {
+        currentActiveWebView.setBounds(bounds);
+    }
+}
+
+export function getCurrentActiveWebViewId() {
+    for (const [id, webView] of webViews.entries()) {
+        if (webView === currentActiveWebView) {
+            return id;
+        }
+    }
+    return null;
 }
 
 export const webViewConfigs = {

@@ -25,78 +25,25 @@ const App = function() {
 
   useEffect(() => {
     initializeAuth();
-
-    // Listen for auth success/error events
-    const handleAuthSuccess = async (event) => {
-      setUser(event.detail);
-      setIsAuthenticating(false);
-
-      // Initialize cloud sync after successful auth
-      try {
-        setSyncStatus('loading');
-        await initializeCloudSync();
-        setSyncStatus('synced');
-      } catch (error) {
-        console.error('Cloud sync initialization failed:', error);
-        setSyncStatus('error');
-        // Continue anyway, settings will use defaults
-        setSettingsLoaded(true);
-      }
-    };
-
-    const handleAuthError = (event) => {
-      console.error('Auth error:', event.detail);
-      setIsAuthenticating(false);
-      setSettingsLoaded(false);
-      setSyncStatus('idle');
-    };
-
-    window.addEventListener('auth-success', handleAuthSuccess);
-    window.addEventListener('auth-error', handleAuthError);
-
-    return () => {
-      window.removeEventListener('auth-success', handleAuthSuccess);
-      window.removeEventListener('auth-error', handleAuthError);
-    };
   }, []);
 
-  useEffect(() => {
-    if (!window.api?.onAuthProtocolCallback) return;
 
-    const handleProtocolCallback = async (protocolUrl) => {
-      console.log('Protocol callback received:', protocolUrl);
+  const initializeAuth = async function() {
+    try {
+      if (window.location.pathname === '/callback' || window.location.search.includes('code=')) {
+        console.log('[App] Processing auth callback...');
+        setIsAuthenticating(true);
 
-      try {
-        const normalizedUrl = protocolUrl.replace('focusbear:///', 'focusbear://');
-
-        if (normalizedUrl.startsWith('focusbear://logout')) {
-          console.log('Logout callback received');
-          setUser(null);
-          setSettingsLoaded(false);
-          setSyncStatus('idle');
-          return;
-        }
-
-        const userData = await nativeAuthService.handleCallback(normalizedUrl);
+        const userData = await nativeAuthService.handleRedirectCallback();
         setUser(userData);
         setIsAuthenticating(false);
 
         setSyncStatus('loading');
         await initializeCloudSync();
         setSyncStatus('synced');
-      } catch (error) {
-        console.error('Protocol callback handling failed:', error);
-        setIsAuthenticating(false);
+        return;
       }
-    };
 
-    const cleanup = window.api.onAuthProtocolCallback(handleProtocolCallback);
-
-    return cleanup;
-  }, []);
-
-  const initializeAuth = async function() {
-    try {
       const isAuthenticated = await nativeAuthService.isAuthenticated();
 
       if (isAuthenticated) {
@@ -107,12 +54,12 @@ const App = function() {
         await initializeCloudSync();
         setSyncStatus('synced');
       } else {
-        console.log('User not authenticated, opening auth window...');
+        console.log('[App] User not authenticated, starting auto-login...');
         setIsAuthenticating(true);
         await nativeAuthService.login();
       }
     } catch (error) {
-      console.error('Auth initialization failed:', error);
+      console.error('[App] Auth initialization failed:', error);
       setIsAuthenticating(false);
       setSettingsLoaded(false);
       setSyncStatus('error');

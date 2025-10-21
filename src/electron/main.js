@@ -4,7 +4,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
-import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs } from './webview-handler.js';
+import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn } from 'child_process';
 import "./Blocker.js"
 import { focusState } from './focusState.js';
@@ -12,16 +12,21 @@ import SimpleUrlGrabber from './simpleUrlGrabber.js';
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
 
-// Load environment variables
 dotenv.config();
+
+console.log('[Main Process] Starting Focus Bear...');
+console.log('[Main Process] App packaged:', app.isPackaged);
+console.log('[Main Process] App path:', app.getAppPath());
+console.log('[Main Process] User data path:', app.getPath('userData'));
+console.log('[Main Process] Node env:', process.env.NODE_ENV);
 
 let tray = null
 let focusBearView = null
 let mainWindow = null;
 let authWindow = null;
 let exitflag = false;
-const urlGrabber = new SimpleUrlGrabber();
 let pendingProtocolUrl = null;
+const urlGrabber = new SimpleUrlGrabber();
 
 // Unified focus session state
 let isFocusActive = false;
@@ -46,32 +51,11 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
-    console.log('Second instance detected, commandLine:', commandLine);
-
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
-
-      const protocolUrl = commandLine.find(arg => arg.startsWith('focusbear://'));
-      if (protocolUrl) {
-        console.log('Found protocol URL in second instance:', protocolUrl);
-        if (mainWindow.webContents.isLoading()) {
-          mainWindow.webContents.once('did-finish-load', () => {
-            mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
-          });
-        } else {
-          mainWindow.webContents.send('auth-protocol-callback', protocolUrl);
-        }
-      }
     }
   });
-}
-
-console.log('App process.argv:', process.argv);
-const initialProtocolUrl = process.argv.find(arg => arg.startsWith('focusbear://'));
-if (initialProtocolUrl) {
-  console.log('Found protocol URL on startup:', initialProtocolUrl);
-  pendingProtocolUrl = initialProtocolUrl;
 }
 
 app.on("ready", function(){
@@ -105,9 +89,15 @@ app.on("ready", function(){
     });
 
     mainWindow.on('resize', () => {
-        if (focusBearView && mainWindow.contentView) {
-            const containerBounds = getWebviewContainerBounds();
-            focusBearView.setBounds(containerBounds);
+        const activeWebViewId = getCurrentActiveWebViewId();
+        if (activeWebViewId) {
+            let containerBounds = getWebviewContainerBounds();
+
+            if (activeWebViewId === 'blocking_schedule') {
+                containerBounds.height = containerBounds.height * 0.46;
+            }
+
+            resizeCurrentWebView(containerBounds);
         }
     });
 
@@ -128,11 +118,9 @@ app.on("ready", function(){
     mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
         console.log('Navigation attempt to:', navigationUrl);
 
-        if (navigationUrl.includes('auth0.com')) {
-            event.preventDefault();
-            return;
-        }
-        if (navigationUrl.startsWith('file://') || navigationUrl.startsWith('http://localhost:5173')) {
+        if (navigationUrl.startsWith('file://') ||
+            navigationUrl.startsWith('http://localhost:5173') ||
+            navigationUrl.includes('auth0.com')) {
             return;
         }
 
@@ -475,8 +463,19 @@ function stopMitmproxyBlocker() {
 
 //Webiew Handling
 ipcMain.on('switch-webview', function(event, webViewId, metadata) {
+    console.log(`[Main Process] switch-webview called for ${webViewId}`);
+    console.log(`[Main Process] Metadata:`, {
+        hasAccessToken: !!metadata?.access_token,
+        hasClientId: !!metadata?.client_id,
+        clientId: metadata?.client_id,
+        hasUser: !!metadata?.user
+    });
+
     const config = webViewConfigs[webViewId];
-    if (!config) return;
+    if (!config) {
+        console.error(`[Main Process] No config found for webViewId: ${webViewId}`);
+        return;
+    }
 
     const webView = createWebView({ ...config, mainWindow, metadata });
     const bounds = getWebviewContainerBounds();
