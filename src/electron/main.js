@@ -141,8 +141,6 @@ app.on("ready", function(){
             mainWindow.focus();
         }
     });
-
-    testDesktopEnvironmentDetection();
 });
 
 ipcMain.on('quit-channel', function() {
@@ -404,6 +402,13 @@ function unsetSystemProxy(callback) {
 }
 
 // MITMPROXY BLOCKING FUNCTIONS
+function checkCertificateExists(callback) {
+    const certPath = join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
+    fs.access(certPath)
+        .then(() => callback(true))
+        .catch(() => callback(false));
+}
+
 function startMitmproxyBlocker(callback) {
     const scriptPath = join(__dirname, '../python/mitmproxy_blocker.py');
     const proxyHost = '127.0.0.1';
@@ -416,7 +421,7 @@ function startMitmproxyBlocker(callback) {
         }
 
         console.log('Starting mitmproxy blocker...');
-        
+
         mitmproxyProcess = spawn('mitmdump', [
             '-s', scriptPath,
             '--set', 'block_global=false'
@@ -438,7 +443,7 @@ function startMitmproxyBlocker(callback) {
 
         mitmproxyProcess.on('error', (error) => {
             console.error('Failed to start mitmproxy:', error);
-            callback(error, error.message);
+            callback(error, `Failed to start mitmproxy: ${error.message}`);
             return;
         });
 
@@ -528,6 +533,18 @@ ipcMain.on('hide-all-webviews', function(event) {
 ipcMain.on('open-auth-window', function(event, url) {
     console.log('Opening auth window with URL:', url);
     openAuthWindow(url);
+})
+
+ipcMain.handle('check-certificate-exists', async function() {
+    return new Promise((resolve) => {
+        checkCertificateExists((exists) => {
+            resolve(exists);
+        });
+    });
+})
+
+ipcMain.handle('get-certificate-path', async function() {
+    return join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
 })
 
 
