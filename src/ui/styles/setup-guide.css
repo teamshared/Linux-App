@@ -9,21 +9,8 @@
 }
 
 #setup-guide h1 {
-    color: #666;;
-    padding-bottom: 10px;
-}
-
-.setup-intro {
-    background-color: #fff8ec;
-    border-left: 4px solid #ff9500;
-    padding: 15px 20px;
-    margin: 20px 0;
-    border-radius: 4px;
-}
-
-.setup-intro p {
-    margin: 0;
     color: #666;
+    padding-bottom: 10px;
 }
 
 .installation-status {
@@ -122,35 +109,8 @@
     margin-bottom: 15px;
 }
 
-.step-number {
-    background-color: #ff9500;
-    color: white;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 1rem;
-    flex-shrink: 0;
-}
-
 .command-group {
     margin: 15px 0;
-}
-
-.command-label {
-    font-weight: 600;
-    color: #666;
-    margin-bottom: 8px;
-}
-
-.command-note {
-    font-size: 0.85rem;
-    color: #666;
-    margin-top: 5px;
-    font-style: italic;
 }
 
 .code-block-wrapper {
@@ -195,18 +155,6 @@
     background-color: #cc7700;
 }
 
-.substep {
-    margin: 20px 0;
-    padding-left: 20px;
-}
-
-.substep-header {
-    font-size: 1rem;
-    color: #666;
-    margin-bottom: 10px;
-    font-weight: 600;
-}
-
 .instruction-list {
     margin: 10px 0;
     padding-left: 25px;
@@ -248,45 +196,6 @@
 
 .browser-instructions h4:first-child {
     margin-top: 0;
-}
-
-.warning-section {
-    background-color: #fff3cd;
-    border-color: #ffc107;
-}
-
-.warning-section .section-header {
-    color: #856404;
-}
-
-.warning-section .step-number {
-    background-color: #ffc107;
-}
-
-.warning-section p {
-    color: #856404;
-}
-
-.warning-section ul {
-    color: #856404;
-}
-
-.success-section {
-    background-color: #e8f5e8;
-    border-color: #28a745;
-}
-
-.success-section .section-header {
-    color: #28a745;
-}
-
-.success-section .step-number {
-    background-color: #28a745;
-}
-
-.success-section p {
-    color: #2d6a2d;
-    font-weight: 500;
 }
 
 code {

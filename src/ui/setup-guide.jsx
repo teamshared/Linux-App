@@ -163,35 +163,6 @@ const SetupGuide = function() {
         </div>
       </div>
 
-      <div className="setup-section warning-section">
-        <h2 className="section-header">
-          <span className="step-number">⚠</span>
-          Important Warning
-        </h2>
-        <p>
-          <strong>If you start a focus session without completing Step 2:</strong>
-        </p>
-        <ul className="instruction-list">
-          <li>Your browser will show certificate errors on every HTTPS website</li>
-          <li>Websites will display warnings like "Your connection is not private"</li>
-          <li>You won't be able to browse the internet normally</li>
-        </ul>
-        <p style={{ marginTop: '15px' }}>
-          <strong>Solution:</strong> If this happens, stop the focus session from the system tray,
-          then complete the certificate import steps above before starting a new focus session.
-        </p>
-      </div>
-
-      <div className="setup-section success-section">
-        <h2 className="section-header">
-          <span className="step-number">✓</span>
-          You're all set!
-        </h2>
-        <p>
-          Once you've imported the certificate, your browser will trust the mitmproxy connection.
-          You can now use Focus Bear to block distracting websites during focus sessions without any certificate warnings!
-        </p>
-      </div>
     </section>
   );
 };
