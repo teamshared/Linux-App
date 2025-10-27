@@ -24,7 +24,25 @@ const App = function() {
   }, [user, isLoading, isAuthenticating, settingsLoaded, syncStatus]);
 
   useEffect(() => {
-    initializeAuth();
+    let callbackReceived = false;
+
+    if (window.api?.onAuthProtocolCallback) {
+      window.api.onAuthProtocolCallback((url) => {
+        console.log('[App] Received auth callback from main process:', url);
+        callbackReceived = true;
+        const urlObj = new URL(url);
+        if (urlObj.searchParams.has('code')) {
+          window.history.pushState({}, '', `/callback${urlObj.search}`);
+          initializeAuth();
+        }
+      });
+    }
+
+    setTimeout(() => {
+      if (!callbackReceived) {
+        initializeAuth();
+      }
+    }, 200);
   }, []);
 
 

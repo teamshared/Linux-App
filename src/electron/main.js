@@ -72,8 +72,33 @@ app.on("ready", function(){
         devTools: true,
     });
     tray = createTray(mainWindow)
-    
+
     const isDev = !app.isPackaged;
+
+    if (!isDev) {
+        const { webRequest } = mainWindow.webContents.session;
+        const filter = { urls: ['http://localhost/callback*'] };
+
+        webRequest.onBeforeRequest(filter, async (details, callback) => {
+            console.log('[Auth] Intercepted callback on main window:', details.url);
+
+            pendingProtocolUrl = details.url;
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.once('did-finish-load', () => {
+                    console.log('[Auth] Sending callback to renderer after reload:', pendingProtocolUrl);
+                    if (pendingProtocolUrl) {
+                        mainWindow.webContents.send('auth-protocol-callback', pendingProtocolUrl);
+                        pendingProtocolUrl = null;
+                    }
+                });
+                mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'));
+            }
+
+            callback({ cancel: true });
+        });
+    }
+
     if (isDev) {
         mainWindow.loadURL('http://localhost:5173');
     } else {
@@ -141,8 +166,6 @@ app.on("ready", function(){
             mainWindow.focus();
         }
     });
-
-    testDesktopEnvironmentDetection();
 });
 
 ipcMain.on('quit-channel', function() {
@@ -276,7 +299,7 @@ app.on('window-all-closed', function() {
 
 app.on('before-quit', function() {
     stopMonitoring()
-    stopMitmproxyBlocker(); // Clean up mitmproxy process
+    stopMitmproxyBlocker();
 });
 
 app.on('will-quit', function() {
@@ -340,24 +363,30 @@ function openAuthWindow(authUrl) {
         title: 'Focus Bear - Sign In'
     });
 
-    authWindow.loadURL(authUrl);
+    const { webRequest } = authWindow.webContents.session;
+    const filter = { urls: ['http://localhost/callback*'] };
 
-    authWindow.webContents.on('will-redirect', (event, url) => {
-        console.log('Auth window redirect:', url);
-        handleAuthRedirect(url);
-    });
+    webRequest.onBeforeRequest(filter, async (details, callback) => {
+        console.log('[Auth] Intercepted callback:', details.url);
 
-    authWindow.webContents.on('will-navigate', (event, url) => {
-        console.log('Auth window navigate:', url);
-        if (url.startsWith('focusbear://')) {
-            event.preventDefault();
-            handleAuthRedirect(url);
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('auth-protocol-callback', details.url);
+            mainWindow.show();
+            mainWindow.focus();
         }
+
+        if (authWindow && !authWindow.isDestroyed()) {
+            authWindow.close();
+        }
+
+        callback({ cancel: true });
     });
 
     authWindow.on('closed', () => {
         authWindow = null;
     });
+
+    authWindow.loadURL(authUrl);
 }
 
 function handleAuthRedirect(url) {
@@ -378,7 +407,9 @@ function handleAuthRedirect(url) {
 
 // SYSTEM PROXY FUNCTIONS
 function setSystemProxy(host, port, callback) {
-    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
+    const scriptPath = app.isPackaged
+        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
+        : join(__dirname, '../python/set_system_proxy.py');
     execFile('python3', [scriptPath, 'set', host, port], (err, stdout, stderr) => {
         if (err) {
             console.error('Proxy set error:', stderr);
@@ -391,7 +422,9 @@ function setSystemProxy(host, port, callback) {
 }
 
 function unsetSystemProxy(callback) {
-    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
+    const scriptPath = app.isPackaged
+        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
+        : join(__dirname, '../python/set_system_proxy.py');
     execFile('python3', [scriptPath, 'unset'], (err, stdout, stderr) => {
         if (err) {
             console.error('Proxy unset error:', stderr);
@@ -404,8 +437,17 @@ function unsetSystemProxy(callback) {
 }
 
 // MITMPROXY BLOCKING FUNCTIONS
+function checkCertificateExists(callback) {
+    const certPath = join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
+    fs.access(certPath)
+        .then(() => callback(true))
+        .catch(() => callback(false));
+}
+
 function startMitmproxyBlocker(callback) {
-    const scriptPath = join(__dirname, '../python/mitmproxy_blocker.py');
+    const scriptPath = app.isPackaged
+        ? join(process.resourcesPath, 'python', 'mitmproxy_blocker.py')
+        : join(__dirname, '../python/mitmproxy_blocker.py');
     const proxyHost = '127.0.0.1';
     const proxyPort = 8080;
 
@@ -416,7 +458,7 @@ function startMitmproxyBlocker(callback) {
         }
 
         console.log('Starting mitmproxy blocker...');
-        
+
         mitmproxyProcess = spawn('mitmdump', [
             '-s', scriptPath,
             '--set', 'block_global=false'
@@ -438,7 +480,7 @@ function startMitmproxyBlocker(callback) {
 
         mitmproxyProcess.on('error', (error) => {
             console.error('Failed to start mitmproxy:', error);
-            callback(error, error.message);
+            callback(error, `Failed to start mitmproxy: ${error.message}`);
             return;
         });
 
@@ -528,6 +570,18 @@ ipcMain.on('hide-all-webviews', function(event) {
 ipcMain.on('open-auth-window', function(event, url) {
     console.log('Opening auth window with URL:', url);
     openAuthWindow(url);
+})
+
+ipcMain.handle('check-certificate-exists', async function() {
+    return new Promise((resolve) => {
+        checkCertificateExists((exists) => {
+            resolve(exists);
+        });
+    });
+})
+
+ipcMain.handle('get-certificate-path', async function() {
+    return join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
 })
 
 
@@ -649,3 +703,100 @@ function applySettings(settings) {
   console.log('Bear mode:', settings.selectedBearMode);
 }
 // END OF AUTH 0 SETTINGS SYNCING
+
+ipcMain.handle('detect-distro', async function() {
+  return new Promise((resolve) => {
+    exec('cat /etc/os-release', (error, stdout, stderr) => {
+      if (error) {
+        resolve('unknown');
+        return;
+      }
+
+      const output = stdout.toLowerCase();
+      if (output.includes('ubuntu')) {
+        resolve('ubuntu');
+      } else if (output.includes('debian')) {
+        resolve('debian');
+      } else if (output.includes('fedora')) {
+        resolve('fedora');
+      } else if (output.includes('arch')) {
+        resolve('arch');
+      } else if (output.includes('mint')) {
+        resolve('mint');
+      } else {
+        resolve('unknown');
+      }
+    });
+  });
+});
+
+ipcMain.handle('cleanup-app-data', async function() {
+  const details = [];
+  let success = true;
+
+  try {
+    if (isFocusActive) {
+      await stopMitmproxyBlocker();
+      details.push('Stopped active focus session');
+    }
+
+    const pythonScriptPath = app.isPackaged
+      ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
+      : join(app.getAppPath(), 'src', 'python', 'set_system_proxy.py');
+
+    await new Promise((resolve) => {
+      exec(`python3 "${pythonScriptPath}" unset`, (error) => {
+        if (error) {
+          console.error('Failed to unset proxy:', error);
+        }
+        details.push('Reset system proxy settings');
+        resolve();
+      });
+    });
+
+    try {
+      await fs.unlink('/tmp/focusbear-blocklist.txt');
+      details.push('Removed blocklist file');
+    } catch (error) {
+      console.log('Blocklist file not found or already removed');
+    }
+
+    try {
+      await fs.unlink('/tmp/focusbear-keywords.txt');
+      details.push('Removed keywords file');
+    } catch (error) {
+      console.log('Keywords file not found or already removed');
+    }
+
+    const homeDir = app.getPath('home');
+    const proxyEnvPath = join(homeDir, '.focus_proxy_env');
+    try {
+      await fs.unlink(proxyEnvPath);
+      details.push('Removed proxy environment file');
+    } catch (error) {
+      console.log('Proxy env file not found or already removed');
+    }
+
+    const settingsPath = getSettingsPath();
+    try {
+      await fs.unlink(settingsPath);
+      details.push('Removed local settings backup');
+    } catch (error) {
+      console.log('Settings file not found or already removed');
+    }
+
+    return {
+      success: true,
+      message: 'Successfully cleaned up all Focus Bear data',
+      details: details
+    };
+
+  } catch (error) {
+    console.error('Cleanup failed:', error);
+    return {
+      success: false,
+      message: 'Failed to clean up some data: ' + error.message,
+      details: details
+    };
+  }
+});

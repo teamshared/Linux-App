@@ -1,0 +1,213 @@
+#setup-guide {
+    padding: 20px 30px;
+    max-width: 900px;
+    margin: 0 auto;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    overflow-y: auto;
+    height: calc(100vh - 200px);
+}
+
+#setup-guide h1 {
+    color: #666;
+    padding-bottom: 10px;
+}
+
+.installation-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 6px;
+    border: 2px solid;
+}
+
+.installation-status.installed {
+    background-color: #e8f5e8;
+    border-color: #28a745;
+}
+
+.installation-status.not-installed {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+}
+
+.status-icon {
+    font-size: 2rem;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.installation-status.installed .status-icon {
+    background-color: #28a745;
+    color: white;
+}
+
+.installation-status.not-installed .status-icon {
+    background-color: #ffc107;
+    color: white;
+}
+
+.status-content {
+    flex: 1;
+}
+
+.status-title {
+    font-size: 1.1rem;
+    margin: 0 0 8px 0;
+    font-weight: 600;
+}
+
+.installation-status.installed .status-title {
+    color: #28a745;
+}
+
+.installation-status.not-installed .status-title {
+    color: #856404;
+}
+
+.status-message {
+    margin: 0 0 12px 0;
+    color: #666;
+}
+
+.refresh-btn {
+    padding: 6px 16px;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+    background-color: #f0f0f0;
+    border-color: #999;
+}
+
+.setup-section {
+    margin: 30px 0;
+    padding: 20px;
+    background-color: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.command-group {
+    margin: 15px 0;
+}
+
+.code-block-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background-color: #f5f5f5;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    padding: 10px 15px;
+    margin: 8px 0;
+}
+
+.code-block {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #666;
+    background: none;
+    border: none;
+    word-break: break-all;
+}
+
+.copy-btn {
+    padding: 6px 12px;
+    background-color: #ff9500;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+}
+
+.copy-btn:hover {
+    background-color: #e68500;
+}
+
+.copy-btn:active {
+    background-color: #cc7700;
+}
+
+.instruction-list {
+    margin: 10px 0;
+    padding-left: 25px;
+}
+
+.instruction-list li {
+    margin: 8px 0;
+    color: #666;
+}
+
+.instruction-list li.note {
+    color: #666;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+.instruction-list code {
+    background-color: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #d63384;
+}
+
+.browser-instructions {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+}
+
+.browser-instructions h4 {
+    color: #ff9500;
+    margin-top: 15px;
+    margin-bottom: 10px;
+    font-size: 0.95rem;
+}
+
+.browser-instructions h4:first-child {
+    margin-top: 0;
+}
+
+code {
+    background-color: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #d63384;
+}
+
+strong {
+    color: #666;
+    font-weight: 600;
+}

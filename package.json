@@ -17,6 +17,7 @@
     "preview": "vite preview",
     "package": "npm run build && electron-builder --linux AppImage",
     "package:all": "npm run build && electron-builder --linux AppImage deb",
+    "package:full": "npm run build && electron-builder --linux AppImage deb rpm",
     "package:dir": "npm run build && electron-builder --dir"
   },
   "dependencies": {
@@ -44,7 +45,7 @@
   "build": {
     "appId": "io.focusbear.app",
     "productName": "Focus Bear",
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "artifactName": "focusbear-${version}-${arch}.${ext}",
     "linux": {
       "target": [
         {
@@ -55,6 +56,12 @@
         },
         {
           "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
           "arch": [
             "x64"
           ]
@@ -70,6 +77,12 @@
         "MimeType": "x-scheme-handler/focusbear;"
       },
       "executableName": "focusbear"
+    },
+    "deb": {
+      "depends": ["python3", "mitmproxy"]
+    },
+    "rpm": {
+      "depends": ["python3", "mitmproxy"]
     },
     "protocols": [
       {
