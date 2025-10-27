@@ -72,8 +72,33 @@ app.on("ready", function(){
         devTools: true,
     });
     tray = createTray(mainWindow)
-    
+
     const isDev = !app.isPackaged;
+
+    if (!isDev) {
+        const { webRequest } = mainWindow.webContents.session;
+        const filter = { urls: ['http://localhost/callback*'] };
+
+        webRequest.onBeforeRequest(filter, async (details, callback) => {
+            console.log('[Auth] Intercepted callback on main window:', details.url);
+
+            pendingProtocolUrl = details.url;
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.once('did-finish-load', () => {
+                    console.log('[Auth] Sending callback to renderer after reload:', pendingProtocolUrl);
+                    if (pendingProtocolUrl) {
+                        mainWindow.webContents.send('auth-protocol-callback', pendingProtocolUrl);
+                        pendingProtocolUrl = null;
+                    }
+                });
+                mainWindow.loadFile(join(app.getAppPath(), '/dist-react/index.html'));
+            }
+
+            callback({ cancel: true });
+        });
+    }
+
     if (isDev) {
         mainWindow.loadURL('http://localhost:5173');
     } else {
@@ -274,7 +299,7 @@ app.on('window-all-closed', function() {
 
 app.on('before-quit', function() {
     stopMonitoring()
-    stopMitmproxyBlocker(); // Clean up mitmproxy process
+    stopMitmproxyBlocker();
 });
 
 app.on('will-quit', function() {
@@ -338,24 +363,30 @@ function openAuthWindow(authUrl) {
         title: 'Focus Bear - Sign In'
     });
 
-    authWindow.loadURL(authUrl);
+    const { webRequest } = authWindow.webContents.session;
+    const filter = { urls: ['http://localhost/callback*'] };
 
-    authWindow.webContents.on('will-redirect', (event, url) => {
-        console.log('Auth window redirect:', url);
-        handleAuthRedirect(url);
-    });
+    webRequest.onBeforeRequest(filter, async (details, callback) => {
+        console.log('[Auth] Intercepted callback:', details.url);
 
-    authWindow.webContents.on('will-navigate', (event, url) => {
-        console.log('Auth window navigate:', url);
-        if (url.startsWith('focusbear://')) {
-            event.preventDefault();
-            handleAuthRedirect(url);
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('auth-protocol-callback', details.url);
+            mainWindow.show();
+            mainWindow.focus();
         }
+
+        if (authWindow && !authWindow.isDestroyed()) {
+            authWindow.close();
+        }
+
+        callback({ cancel: true });
     });
 
     authWindow.on('closed', () => {
         authWindow = null;
     });
+
+    authWindow.loadURL(authUrl);
 }
 
 function handleAuthRedirect(url) {
@@ -376,7 +407,9 @@ function handleAuthRedirect(url) {
 
 // SYSTEM PROXY FUNCTIONS
 function setSystemProxy(host, port, callback) {
-    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
+    const scriptPath = app.isPackaged
+        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
+        : join(__dirname, '../python/set_system_proxy.py');
     execFile('python3', [scriptPath, 'set', host, port], (err, stdout, stderr) => {
         if (err) {
             console.error('Proxy set error:', stderr);
@@ -389,7 +422,9 @@ function setSystemProxy(host, port, callback) {
 }
 
 function unsetSystemProxy(callback) {
-    const scriptPath = join(__dirname, '../python/set_system_proxy.py');
+    const scriptPath = app.isPackaged
+        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
+        : join(__dirname, '../python/set_system_proxy.py');
     execFile('python3', [scriptPath, 'unset'], (err, stdout, stderr) => {
         if (err) {
             console.error('Proxy unset error:', stderr);
@@ -410,7 +445,9 @@ function checkCertificateExists(callback) {
 }
 
 function startMitmproxyBlocker(callback) {
-    const scriptPath = join(__dirname, '../python/mitmproxy_blocker.py');
+    const scriptPath = app.isPackaged
+        ? join(process.resourcesPath, 'python', 'mitmproxy_blocker.py')
+        : join(__dirname, '../python/mitmproxy_blocker.py');
     const proxyHost = '127.0.0.1';
     const proxyPort = 8080;
 

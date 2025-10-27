@@ -8,7 +8,7 @@ class NativeAuthService {
     const isDev = import.meta.env.DEV;
     this.redirectUri = isDev
       ? 'http://localhost:5173/callback'
-      : `${window.location.origin}/callback`;
+      : 'http://localhost/callback';
 
     console.log('[NativeAuth] Initializing with config:');
     console.log('  - Domain:', this.domain);
@@ -77,8 +77,8 @@ class NativeAuthService {
       const { codeVerifier, codeChallenge, codeChallengeMethod } = await generatePKCEPair();
       const state = generateState();
 
-      sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-      sessionStorage.setItem('pkce_state', state);
+      localStorage.setItem('pkce_code_verifier', codeVerifier);
+      localStorage.setItem('pkce_state', state);
 
       const authUrl = `https://${this.domain}/authorize?` +
         `response_type=code&` +
@@ -107,8 +107,8 @@ class NativeAuthService {
       const code = urlParams.get('code');
       const state = urlParams.get('state');
 
-      const storedState = sessionStorage.getItem('pkce_state');
-      const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
+      const storedState = localStorage.getItem('pkce_state');
+      const codeVerifier = localStorage.getItem('pkce_code_verifier');
 
       console.log('[NativeAuth] Callback params:', {
         hasCode: !!code,
@@ -140,8 +140,8 @@ class NativeAuthService {
 
       this.saveTokensToStorage();
 
-      sessionStorage.removeItem('pkce_code_verifier');
-      sessionStorage.removeItem('pkce_state');
+      localStorage.removeItem('pkce_code_verifier');
+      localStorage.removeItem('pkce_state');
 
       window.history.replaceState({}, document.title, '/');
 
@@ -281,7 +281,7 @@ class NativeAuthService {
 
       const returnUrl = import.meta.env.DEV
         ? 'http://localhost:5173'
-        : window.location.origin;
+        : 'http://localhost';
 
       const logoutUrl = `https://${this.domain}/v2/logout?` +
         `client_id=${encodeURIComponent(this.clientId)}&` +
