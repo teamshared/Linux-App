@@ -129,6 +129,14 @@ const API = {
 
     openAuthWindow: function(url) {
         return ipcRenderer.send('open-auth-window', url);
+    },
+
+    checkCertificateExists: function() {
+        return ipcRenderer.invoke('check-certificate-exists');
+    },
+
+    getCertificatePath: function() {
+        return ipcRenderer.invoke('get-certificate-path');
     }
 
 }
