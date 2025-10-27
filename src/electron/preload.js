@@ -137,6 +137,14 @@ const API = {
 
     getCertificatePath: function() {
         return ipcRenderer.invoke('get-certificate-path');
+    },
+
+    detectDistro: function() {
+        return ipcRenderer.invoke('detect-distro');
+    },
+
+    cleanupAppData: function() {
+        return ipcRenderer.invoke('cleanup-app-data');
     }
 
 }

@@ -1,4 +1,4 @@
-#setup-guide {
+#uninstall-page {
     padding: 20px 30px;
     max-width: 900px;
     margin: 0 auto;
@@ -8,12 +8,12 @@
     height: calc(100vh - 200px);
 }
 
-#setup-guide h1 {
-    color: #666;;
+#uninstall-page h1 {
+    color: #666;
     padding-bottom: 10px;
 }
 
-.setup-intro {
+.uninstall-intro {
     background-color: #fff8ec;
     border-left: 4px solid #ff9500;
     padding: 15px 20px;
@@ -21,12 +21,12 @@
     border-radius: 4px;
 }
 
-.setup-intro p {
+.uninstall-intro p {
     margin: 0;
     color: #666;
 }
 
-.installation-status {
+.cleanup-status {
     display: flex;
     align-items: flex-start;
     gap: 15px;
@@ -36,17 +36,17 @@
     border: 2px solid;
 }
 
-.installation-status.installed {
+.cleanup-status.success {
     background-color: #e8f5e8;
     border-color: #28a745;
 }
 
-.installation-status.not-installed {
-    background-color: #fff3cd;
-    border-color: #ffc107;
+.cleanup-status.error {
+    background-color: #ffe6e6;
+    border-color: #dc3545;
 }
 
-.status-icon {
+.cleanup-status .status-icon {
     font-size: 2rem;
     width: 50px;
     height: 50px;
@@ -57,52 +57,70 @@
     flex-shrink: 0;
 }
 
-.installation-status.installed .status-icon {
+.cleanup-status.success .status-icon {
     background-color: #28a745;
     color: white;
 }
 
-.installation-status.not-installed .status-icon {
-    background-color: #ffc107;
+.cleanup-status.error .status-icon {
+    background-color: #dc3545;
     color: white;
 }
 
-.status-content {
-    flex: 1;
-}
-
-.status-title {
+.cleanup-status .status-title {
     font-size: 1.1rem;
     margin: 0 0 8px 0;
     font-weight: 600;
 }
 
-.installation-status.installed .status-title {
+.cleanup-status.success .status-title {
     color: #28a745;
 }
 
-.installation-status.not-installed .status-title {
-    color: #856404;
+.cleanup-status.error .status-title {
+    color: #dc3545;
 }
 
-.status-message {
+.cleanup-status .status-message {
     margin: 0 0 12px 0;
     color: #666;
 }
 
-.refresh-btn {
-    padding: 6px 16px;
-    background-color: #fff;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    cursor: pointer;
+.cleanup-details {
+    margin: 10px 0 0 20px;
+    padding: 0;
+    list-style: disc;
+    color: #666;
     font-size: 0.85rem;
-    transition: all 0.2s;
 }
 
-.refresh-btn:hover {
-    background-color: #f0f0f0;
-    border-color: #999;
+.cleanup-details li {
+    margin: 4px 0;
+}
+
+.cleanup-btn {
+    padding: 12px 24px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: background-color 0.2s;
+}
+
+.cleanup-btn:hover:not(:disabled) {
+    background-color: #c82333;
+}
+
+.cleanup-btn:active:not(:disabled) {
+    background-color: #bd2130;
+}
+
+.cleanup-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
 }
 
 .setup-section {
@@ -118,7 +136,7 @@
     align-items: center;
     gap: 12px;
     font-size: 1.1rem;
-    color: #666;
+    color: #333;
     margin-bottom: 15px;
 }
 
@@ -146,13 +164,6 @@
     margin-bottom: 8px;
 }
 
-.command-note {
-    font-size: 0.85rem;
-    color: #666;
-    margin-top: 5px;
-    font-style: italic;
-}
-
 .code-block-wrapper {
     display: flex;
     align-items: center;
@@ -168,7 +179,7 @@
     flex: 1;
     font-family: 'Courier New', monospace;
     font-size: 0.85rem;
-    color: #666;
+    color: #333;
     background: none;
     border: none;
     word-break: break-all;
@@ -195,18 +206,6 @@
     background-color: #cc7700;
 }
 
-.substep {
-    margin: 20px 0;
-    padding-left: 20px;
-}
-
-.substep-header {
-    font-size: 1rem;
-    color: #666;
-    margin-bottom: 10px;
-    font-weight: 600;
-}
-
 .instruction-list {
     margin: 10px 0;
     padding-left: 25px;
@@ -215,12 +214,6 @@
 .instruction-list li {
     margin: 8px 0;
     color: #666;
-}
-
-.instruction-list li.note {
-    color: #666;
-    font-style: italic;
-    font-size: 0.9rem;
 }
 
 .instruction-list code {
@@ -269,24 +262,6 @@
 
 .warning-section ul {
     color: #856404;
-}
-
-.success-section {
-    background-color: #e8f5e8;
-    border-color: #28a745;
-}
-
-.success-section .section-header {
-    color: #28a745;
-}
-
-.success-section .step-number {
-    background-color: #28a745;
-}
-
-.success-section p {
-    color: #2d6a2d;
-    font-weight: 500;
 }
 
 code {

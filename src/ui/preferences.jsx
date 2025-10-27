@@ -8,6 +8,7 @@ import BlockingSchedule from './blocking-schedule'
 import AccountPage from './account';
 import Keywords_page from './keyword-page';
 import SetupGuide from './setup-guide';
+import UninstallPage from './uninstall-page';
 import { nativeAuthService } from '../services/nativeAuth.js';
 
 const PreferencesPage = function({ user }) {
@@ -192,6 +193,12 @@ const PreferencesPage = function({ user }) {
       {(activeTab === 'Settings' && activeSettingsTab === 'Super Distracting Sites') && (
         <div className="content-area with-subnav">
           <Distracting_sites_page />
+        </div>
+      )}
+
+      {(activeTab === 'Settings' && activeSettingsTab === 'Uninstall') && (
+        <div className="content-area with-subnav">
+          <UninstallPage />
         </div>
       )}
 

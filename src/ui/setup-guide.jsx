@@ -55,9 +55,9 @@ const SetupGuide = function() {
     <section id="setup-guide">
       <h1 style={{ fontSize: '1.3rem', marginBottom: '15px' }}>Certificate Setup Guide</h1>
 
-      <div className="setup-intro">
+      <div>
         <p>
-          To block websites, Focus Bear uses <strong>mitmproxy</strong> to inspect connections.
+          To block websites, Focus Bear uses mitmproxy to inspect connections.
           For this to work properly, you need to install and trust the mitmproxy CA certificate
           in your browser and system. Without this, you'll see certificate errors on every website
           when a focus session is active.
@@ -86,8 +86,7 @@ const SetupGuide = function() {
       )}
 
       <div className="setup-section">
-        <h2 className="section-header">
-          <span className="step-number">1</span>
+        <h2 className="section-header">     
           Generate the certificate
         </h2>
 
@@ -109,7 +108,6 @@ const SetupGuide = function() {
 
       <div className="setup-section">
         <h2 className="section-header">
-          <span className="step-number">2</span>
           Import certificate to your browser
         </h2>
 
@@ -142,7 +140,6 @@ const SetupGuide = function() {
 
       <div className="setup-section">
         <h2 className="section-header">
-          <span className="step-number">3</span>
           Install system-wide (Optional but recommended)
         </h2>
 

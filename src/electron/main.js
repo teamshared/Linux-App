@@ -703,3 +703,100 @@ function applySettings(settings) {
   console.log('Bear mode:', settings.selectedBearMode);
 }
 // END OF AUTH 0 SETTINGS SYNCING
+
+ipcMain.handle('detect-distro', async function() {
+  return new Promise((resolve) => {
+    exec('cat /etc/os-release', (error, stdout, stderr) => {
+      if (error) {
+        resolve('unknown');
+        return;
+      }
+
+      const output = stdout.toLowerCase();
+      if (output.includes('ubuntu')) {
+        resolve('ubuntu');
+      } else if (output.includes('debian')) {
+        resolve('debian');
+      } else if (output.includes('fedora')) {
+        resolve('fedora');
+      } else if (output.includes('arch')) {
+        resolve('arch');
+      } else if (output.includes('mint')) {
+        resolve('mint');
+      } else {
+        resolve('unknown');
+      }
+    });
+  });
+});
+
+ipcMain.handle('cleanup-app-data', async function() {
+  const details = [];
+  let success = true;
+
+  try {
+    if (isFocusActive) {
+      await stopMitmproxyBlocker();
+      details.push('Stopped active focus session');
+    }
+
+    const pythonScriptPath = app.isPackaged
+      ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
+      : join(app.getAppPath(), 'src', 'python', 'set_system_proxy.py');
+
+    await new Promise((resolve) => {
+      exec(`python3 "${pythonScriptPath}" unset`, (error) => {
+        if (error) {
+          console.error('Failed to unset proxy:', error);
+        }
+        details.push('Reset system proxy settings');
+        resolve();
+      });
+    });
+
+    try {
+      await fs.unlink('/tmp/focusbear-blocklist.txt');
+      details.push('Removed blocklist file');
+    } catch (error) {
+      console.log('Blocklist file not found or already removed');
+    }
+
+    try {
+      await fs.unlink('/tmp/focusbear-keywords.txt');
+      details.push('Removed keywords file');
+    } catch (error) {
+      console.log('Keywords file not found or already removed');
+    }
+
+    const homeDir = app.getPath('home');
+    const proxyEnvPath = join(homeDir, '.focus_proxy_env');
+    try {
+      await fs.unlink(proxyEnvPath);
+      details.push('Removed proxy environment file');
+    } catch (error) {
+      console.log('Proxy env file not found or already removed');
+    }
+
+    const settingsPath = getSettingsPath();
+    try {
+      await fs.unlink(settingsPath);
+      details.push('Removed local settings backup');
+    } catch (error) {
+      console.log('Settings file not found or already removed');
+    }
+
+    return {
+      success: true,
+      message: 'Successfully cleaned up all Focus Bear data',
+      details: details
+    };
+
+  } catch (error) {
+    console.error('Cleanup failed:', error);
+    return {
+      success: false,
+      message: 'Failed to clean up some data: ' + error.message,
+      details: details
+    };
+  }
+});
