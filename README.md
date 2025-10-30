@@ -5,10 +5,6 @@ Focus Bear Linux Distraction Blocker
 ### npm run start:prod
 start application in production mode
 
-### npm run start
-start application in development mode
-
-
 #### mitmproxy
 prerequisites:
 1. install mitmproxy
