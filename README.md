@@ -2,7 +2,7 @@
 Focus Bear Linux Distraction Blocker
 
 ### Dev Commands
-#### npm run start:prod
+### npm run start:prod
 start application in production mode
 
 ### npm run start
