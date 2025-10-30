@@ -1,15 +1,13 @@
 ## Project-Group-3---AR-573
 Focus Bear Linux Distraction Blocker
 
-
-## Main
-
 ### Dev Commands
-#### npm run dev:e
-start electron app
+#### npm run start:prod
+start application in production mode
 
-#### npm run dev:r
-start react app
+### npm run start
+start application in development mode
+
 
 #### mitmproxy
 prerequisites:
@@ -44,11 +42,16 @@ Stopping blocker.
 
 
 ### Dependencies
-#### For URL Grabbing
-System Tools:
-
-wmctrl - Lists all windows and their titles
-xprop - Gets detailed window properties (full titles)
-
-
-
+- Node js, At Least Node Js version 20 so its Vite Compatible Can be installed from the Node Js Official Website 
+- npm (Node Package Manager): Should be at least version 10.0.0 should be isntalled when you install nodejs 
+- Python3: Should be at least version 3.8 can be installed with the following command “sudo apt install python3 -y” 
+- MitmProxy: The main proxy application used for the blocking mechanism 
+- build-essential 
+- libgtk-3-0 
+- libnotify4  
+- libnss3  
+- libxss1  
+- libxtst6  
+- xdg-utils  
+- libatspi2.0-0  
+- libsecret-1-0  
