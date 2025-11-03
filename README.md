@@ -1,6 +1,14 @@
 ## Project-Group-3---AR-573
 Focus Bear Linux Distraction Blocker
 
+### Documentation
+
+Refer to word docs and [this video](https://drive.google.com/file/d/1Af-z7W5sLIHynJB9LSC3MY7zyKFEmIZy/view?usp=sharing) for an overview.
+
+### Secrets
+
+In github repo secrets
+
 ### Dev Commands
 ### npm run start:prod
 start application in production mode
