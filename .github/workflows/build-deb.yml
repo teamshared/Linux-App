@@ -1,0 +1,121 @@
+# ============================================================
+# Focus Bear — Linux Build Pipeline
+# ============================================================
+# Triggered on every push to the `dev` branch.
+
+# What this pipeline does:
+#   1. Checks out the code on an Ubuntu runner
+#   2. Sets up Node.js and restores caches to speed up the build
+#   3. Installs fakeroot, required by electron-builder to produce .deb packages
+#   4. Installs npm dependencies
+#   5. Injects Auth0 secrets into a .env file so Vite can embed them at build time
+#   6. Runs `npm run package:all` which:
+#        a. Builds the React frontend with Vite (output: dist-react/)
+#        b. Packages the Electron app with electron-builder (output: dist/)
+#           producing two Linux formats: AppImage, .deb
+#   7. Uploads each package as a downloadable artifact in the Actions run
+
+# Package formats produced:
+#   AppImage — universal, runs on any Linux distro without installing
+#   .deb     — for Debian, Ubuntu, Linux Mint and derivatives
+
+# GITHUB_TOKEN is provided automatically by GitHub Actions so no setup needed.
+# ============================================================
+
+name: Build Linux App
+
+on:
+  push:
+    branches:
+      - packaging/1-packaging-for-debian  # Run this pipeline only when code is pushed to the dev branch
+
+jobs:
+  build:
+    name: Build & Package (Linux)
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner; matches our Linux target platform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------
+      # 2. Node.js setup
+      # ----------------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # ----------------------------------------------------------
+      # 3. Cache Electron binaries (~100 MB)
+      # ----------------------------------------------------------
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      # ----------------------------------------------------------
+      # 4. Cache electron-builder tools
+      # ----------------------------------------------------------
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+
+      # ----------------------------------------------------------
+      # 5. System dependencies
+      # ----------------------------------------------------------
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y fakeroot
+
+      # ----------------------------------------------------------
+      # 6. Install npm dependencies
+      # ----------------------------------------------------------
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ----------------------------------------------------------
+      # 7. Inject Auth0 credentials into .env
+      # ----------------------------------------------------------
+      - name: Create .env file
+        run: |
+          printf 'VITE_AUTH0_DOMAIN=%s\n' "$VITE_AUTH0_DOMAIN" >> .env
+          printf 'VITE_AUTH0_CLIENT_ID=%s\n' "$VITE_AUTH0_CLIENT_ID" >> .env
+        env:
+          VITE_AUTH0_DOMAIN: ${{ secrets.VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}
+
+      # ----------------------------------------------------------
+      # 8. Build and package
+      # ----------------------------------------------------------
+      - name: Build and package
+        run: npm run package:all
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----------------------------------------------------------
+      # 9. Upload artifacts
+      # ----------------------------------------------------------
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusbear-linux-AppImage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload .deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusbear-linux-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
