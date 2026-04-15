@@ -27,7 +27,7 @@ name: Build Linux App
 on:
   push:
     branches:
-      - packaging/1-packaging-for-debian  # Run this pipeline only when code is pushed to the dev branch
+      - packaging/8-packaging-for-debian  # Run this pipeline only when code is pushed to the dev branch
 
 jobs:
   build:
