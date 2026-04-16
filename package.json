@@ -79,10 +79,12 @@
       "executableName": "focusbear"
     },
     "deb": {
-      "depends": ["python3", "mitmproxy"]
+      "depends": ["python3", "mitmproxy"],
+      "afterRemove": "build/scripts/afterRemove.sh"
     },
     "rpm": {
-      "depends": ["python3", "mitmproxy"]
+      "depends": ["python3", "mitmproxy"],
+      "afterRemove": "build/scripts/afterRemove.sh"
     },
     "protocols": [
       {
