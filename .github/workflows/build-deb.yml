@@ -26,8 +26,8 @@ name: Build Linux App
 
 on:
   push:
-    branches:
-      - packaging/8-packaging-for-debian  # Run this pipeline only when code is pushed to the dev branch
+    # branches:
+    #   - packaging/1-packaging-for-debian  # Run this pipeline only when code is pushed to the dev branch
 
 jobs:
   build:
@@ -95,7 +95,18 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}
 
       # ----------------------------------------------------------
-      # 8. Build and package
+      # 8. Verify secrets (partial reveal , no sensitive data exposed)
+      # ----------------------------------------------------------
+      - name: Verify secret format
+        run: |
+          echo "Domain starts with: ${VITE_AUTH0_DOMAIN:0:4}***"
+          echo "Client ID starts with: ${VITE_AUTH0_CLIENT_ID:0:4}***"
+        env:
+          VITE_AUTH0_DOMAIN: ${{ secrets.VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}
+
+      # ----------------------------------------------------------
+      # 9. Build and package
       # ----------------------------------------------------------
       - name: Build and package
         run: npm run package:all
@@ -103,7 +114,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ----------------------------------------------------------
-      # 9. Upload artifacts
+      # 10. Upload artifacts
       # ----------------------------------------------------------
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
@@ -118,4 +129,3 @@ jobs:
           name: focusbear-linux-deb
           path: dist/*.deb
           if-no-files-found: error
-
