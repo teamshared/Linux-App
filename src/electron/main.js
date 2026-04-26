@@ -7,12 +7,115 @@ import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn } from 'child_process';
 import "./Blocker.js"
+import { setBroadcastFunction } from './Blocker.js';
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
+import { createServer } from 'net';
+import { unlink } from 'fs/promises';
 
 dotenv.config();
+
+// Unix domain socket server for native messaging
+const SOCKET_PATH = '/tmp/focusbear.sock';
+let socketServer = null;
+let nativeHostClients = [];
+
+async function startSocketServer() {
+  // Remove existing socket file if it exists
+  try {
+    await unlink(SOCKET_PATH);
+  } catch (error) {
+    // Ignore if file doesn't exist
+  }
+
+  socketServer = createServer((socket) => {
+    console.log('[Socket] Native host connected');
+    nativeHostClients.push(socket);
+
+    // Store the current blocklist for this client
+    socket.currentBlocklist = [];
+
+    socket.on('data', (data) => {
+      const lines = data.toString().split('\n').filter(line => line.trim());
+
+      lines.forEach(line => {
+        try {
+          const message = JSON.parse(line);
+          console.log('[Socket] Received from native host:', message.type);
+
+          if (message.type === 'GET_BLOCKLIST') {
+            // Send the current in-memory blocklist
+            console.log(`[Socket] Sending blocklist: ${socket.currentBlocklist.length} entries`);
+            socket.write(JSON.stringify({
+              type: 'BLOCKLIST_RESPONSE',
+              data: socket.currentBlocklist,
+              timestamp: Date.now()
+            }) + '\n');
+          }
+        } catch (error) {
+          console.error('[Socket] Error parsing message:', error);
+        }
+      });
+    });
+
+    socket.on('close', () => {
+      console.log('[Socket] Native host disconnected');
+      nativeHostClients = nativeHostClients.filter(s => s !== socket);
+    });
+
+    socket.on('error', (error) => {
+      console.error('[Socket] Client error:', error.message);
+    });
+  });
+
+  socketServer.listen(SOCKET_PATH, () => {
+    console.log(`[Socket] Server listening on ${SOCKET_PATH}`);
+  });
+
+  socketServer.on('error', (error) => {
+    console.error('[Socket] Server error:', error);
+  });
+}
+
+// Broadcast blocklist update to all connected native hosts
+function broadcastBlocklistUpdate(blocklist) {
+  const message = JSON.stringify({
+    type: 'BLOCKLIST_UPDATE',
+    data: blocklist,
+    timestamp: Date.now()
+  }) + '\n';
+
+  console.log(`[Socket] Broadcasting blocklist update to ${nativeHostClients.length} clients`);
+
+  nativeHostClients.forEach(client => {
+    try {
+      // Update the stored blocklist for each client
+      client.currentBlocklist = blocklist;
+      client.write(message);
+    } catch (error) {
+      console.error('[Socket] Error broadcasting to client:', error);
+    }
+  });
+}
+
+// Install native messaging host on startup
+async function installNativeMessaging() {
+  const installerPath = join(__dirname, '../native-messaging/install.js');
+  try {
+    console.log('[Native Messaging] Installing native messaging host...');
+    execFile('node', [installerPath], (error, stdout, stderr) => {
+      if (error) {
+        console.error('[Native Messaging] Installation failed:', error.message);
+      } else {
+        console.log('[Native Messaging] Installation output:', stdout);
+      }
+    });
+  } catch (error) {
+    console.error('[Native Messaging] Failed to run installer:', error);
+  }
+}
 
 console.log('[Main Process] Starting Focus Bear...');
 console.log('[Main Process] App packaged:', app.isPackaged);
@@ -36,7 +139,7 @@ function getWebviewContainerBounds() {
     const bounds = mainWindow.getBounds();
     const padding = 20;
     const topOffset = 140;
-    
+
     return {
         x: padding,
         y: topOffset,
@@ -59,6 +162,15 @@ if (!gotTheLock) {
 }
 
 app.on("ready", function(){
+    // Start socket server for native messaging
+    startSocketServer();
+
+    // Set up broadcast function for Blocker.js
+    setBroadcastFunction(broadcastBlocklistUpdate);
+
+    // Install native messaging host
+    installNativeMessaging();
+
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
         height: 850,
@@ -128,10 +240,10 @@ app.on("ready", function(){
 
     mainWindow.on('close', function(event) {
         if (exitflag){
-            return 
+            return
         }
-        event.preventDefault(); 
-        mainWindow.hide();      
+        event.preventDefault();
+        mainWindow.hide();
     });
 
 
@@ -178,7 +290,7 @@ ipcMain.on('focus-session-true', function(event) {
         event.sender.send('focus-session-result', 'Focus session already active');
         return;
     }
-    
+
     startMitmproxyBlocker((error, result) => {
         if (!error) {
             isFocusActive = true;
@@ -186,7 +298,7 @@ ipcMain.on('focus-session-true', function(event) {
             broadcastFocusState(true);
             console.log('Focus session started with mitmproxy');
         }
-        
+
         try {
             if (event.sender && !event.sender.isDestroyed()) {
                 event.sender.send('focus-session-result', error ? `Error: ${result}` : result);
@@ -195,15 +307,15 @@ ipcMain.on('focus-session-true', function(event) {
             console.log('Could not send result to original sender (window destroyed)');
         }
     });
-    
+
     //Uncomment if using hosts file method
     /*
+    // Hosts file blocking is deprecated in favor of native messaging
     const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
-    const blocklistPath = '/tmp/focusbear-blocklist.txt';
-    const command = `pkexec node "${scriptPath}" block --list "${blocklistPath}"`;
-    
-    console.log(`Starting focus session: ${command}`);
-    
+    const command = `pkexec node "${scriptPath}" block`;
+
+    console.log(`Starting focus session (deprecated): ${command}`);
+
     exec(command, (error, stdout, stderr) => {
         if (!error) {
             isFocusActive = true;
@@ -228,14 +340,14 @@ ipcMain.on('focus-session-false', function(event) {
         event.sender.send('focus-session-result', 'Focus session already inactive');
         return;
     }
-    
+
     // Stop mitmproxy blocker
     stopMitmproxyBlocker();
     isFocusActive = false;
     focusState.setActive(false);
     broadcastFocusState(false);
     console.log('Focus session ended');
-    
+
     try {
         if (event.sender && !event.sender.isDestroyed()) {
             event.sender.send('focus-session-result', 'Focus session stopped');
@@ -243,14 +355,14 @@ ipcMain.on('focus-session-false', function(event) {
     } catch (e) {
         console.log('Could not send result to original sender (window destroyed)');
     }
-    
+
     // Uncomment if using hosts file method
     /*
     const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
     const command = `pkexec node "${scriptPath}" unblock`;
-    
+
     console.log(`Ending focus session: ${command}`);
-    
+
     exec(command, (error, stdout, stderr) => {
         if (!error) {
             isFocusActive = false;
@@ -258,9 +370,9 @@ ipcMain.on('focus-session-false', function(event) {
             broadcastFocusState(false);
             console.log('Focus session ended');
         }
-        
+
         const result = error ? `Error: ${stderr || error.message}` : stdout;
-        
+
         try {
             if (event.sender && !event.sender.isDestroyed()) {
                 event.sender.send('focus-session-result', result);
@@ -300,6 +412,12 @@ app.on('window-all-closed', function() {
 app.on('before-quit', function() {
     stopMonitoring()
     stopMitmproxyBlocker();
+
+    // Close socket server
+    if (socketServer) {
+        socketServer.close();
+        nativeHostClients.forEach(client => client.end());
+    }
 });
 
 app.on('will-quit', function() {
@@ -311,7 +429,7 @@ function broadcastFocusState(isActive) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('focus-state-changed', isActive);
     }
-    
+
     const trayWindow = getTrayWindow();
     if (trayWindow && !trayWindow.isDestroyed()) {
         trayWindow.webContents.send('focus-state-changed', isActive);
@@ -496,10 +614,10 @@ function stopMitmproxyBlocker() {
     // 1. Stop mitmproxy
     if (mitmproxyProcess) {
         console.log('Stopping mitmproxy blocker...');
-        
-        // Use an event listener to run unset AFTER mitmproxy closes, 
+
+        // Use an event listener to run unset AFTER mitmproxy closes,
         // OR run it immediately if mitmproxy fails to stop.
-        
+
         const cleanupAndUnset = () => {
             if (!proxyUnsetAttempted) {
                 proxyUnsetAttempted = true;
@@ -520,7 +638,7 @@ function stopMitmproxyBlocker() {
         // Send kill signal (SIGTERM is preferred for graceful shutdown)
         mitmproxyProcess.kill('SIGTERM');
         mitmproxyProcess = null;
-        
+
     } else {
         // 2. If mitmproxy wasn't running, still try to unset the proxy just in case.
         console.log('mitmproxy not running. Attempting proxy cleanup...');
@@ -622,17 +740,17 @@ ipcMain.handle('save-settings', async (event, settings) => {
       lastModified: new Date().toISOString(),
       version: '1.0.0'
     };
-    
+
     try {
       await saveToAuth0(settingsWithMeta);
       console.log('Settings saved to Auth0');
     } catch (error) {
       console.error('Auth0 save failed, saving locally:', error.message);
     }
-    
+
     await saveLocalBackup(settingsWithMeta);
     applySettings(settings);
-    
+
     return { success: true };
   } catch (error) {
     console.error('Failed to save settings:', error);
@@ -643,12 +761,12 @@ ipcMain.handle('save-settings', async (event, settings) => {
 async function loadFromAuth0() {
   return new Promise((resolve, reject) => {
     mainWindow.webContents.send('auth0-get-settings');
-    
+
     const timeout = setTimeout(() => {
       ipcMain.removeAllListeners('auth0-settings-response');
       reject(new Error('Timeout loading from Auth0'));
     }, 5000);
-    
+
     ipcMain.once('auth0-settings-response', (event, result) => {
       clearTimeout(timeout);
       if (result.success) {
@@ -663,12 +781,12 @@ async function loadFromAuth0() {
 async function saveToAuth0(settings) {
   return new Promise((resolve, reject) => {
     mainWindow.webContents.send('auth0-save-settings', settings);
-    
+
     const timeout = setTimeout(() => {
       ipcMain.removeAllListeners('auth0-save-response');
       reject(new Error('Timeout saving to Auth0'));
     }, 10000);
-    
+
     ipcMain.once('auth0-save-response', (event, result) => {
       clearTimeout(timeout);
       if (result.success) {
@@ -692,12 +810,11 @@ async function saveLocalBackup(settings) {
 
 function applySettings(settings) {
   if (settings.urlList) {
-    const urlString = settings.urlList.join('\n');
-    fs.writeFile('/tmp/focusbear-blocklist.txt', urlString)
-      .then(() => console.log('Blocklist updated'))
-      .catch(err => console.error('Failed to update blocklist:', err));
+    console.log('Blocklist updated');
+    // Broadcast to native hosts
+    broadcastBlocklistUpdate(settings.urlList);
   }
-  
+
   console.log('Blocking mode:', settings.selectedBlockMode);
   console.log('Blocking method:', settings.selectedBlockMethod);
   console.log('Bear mode:', settings.selectedBearMode);
