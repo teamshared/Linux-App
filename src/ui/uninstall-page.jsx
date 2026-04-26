@@ -127,14 +127,8 @@ const UninstallPage = function() {
           <li>Your blocked sites and keywords configuration</li>
           <li>Application settings and preferences</li>
           <li>Temporary files in <code>/tmp/focusbear-*</code></li>
-          <li>System proxy settings (if active)</li>
           <li>Focus session state</li>
         </ul>
-
-        <p style={{ marginTop: '15px' }}>
-          <strong>Note:</strong> This does not remove the mitmproxy certificate.
-          If you want to remove it, see the instructions below.
-        </p>
 
         <div style={{ marginTop: '20px' }}>
           <button
@@ -168,45 +162,6 @@ const UninstallPage = function() {
         <p style={{ marginTop: '15px', color: '#666', fontSize: '0.85rem' }}>
           Run this command in your terminal to completely remove Focus Bear from your system.
         </p>
-      </div>
-
-      <div className="setup-section">
-        <h2 className="section-header">
-
-          Remove mitmproxy certificate (Optional)
-        </h2>
-
-        <p>
-          If you want to completely remove the mitmproxy CA certificate from your system:
-        </p>
-
-        <div className="browser-instructions">
-          <h4>Remove from Browser:</h4>
-          <ol className="instruction-list">
-            <li><strong>Firefox:</strong> Settings → Privacy & Security → Certificates → View Certificates → Authorities tab → Find "mitmproxy" → Delete</li>
-            <li><strong>Chrome:</strong> Settings → Privacy and security → Security → Manage certificates → Authorities tab → Find "mitmproxy" → Delete</li>
-          </ol>
-
-          <h4>Remove from System:</h4>
-          <div className="command-group">
-            <CodeBlock
-              command="sudo rm /usr/local/share/ca-certificates/mitmproxy-ca.crt"
-              commandId="remove-cert-1"
-            />
-          </div>
-          <div className="command-group">
-            <CodeBlock
-              command="sudo update-ca-certificates"
-              commandId="remove-cert-2"
-            />
-          </div>
-          <div className="command-group">
-            <CodeBlock
-              command="rm -rf ~/.mitmproxy"
-              commandId="remove-cert-3"
-            />
-          </div>
-        </div>
       </div>
 
   
