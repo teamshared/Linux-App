@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blocked by Focus Bear</title>
+    <link rel="icon" href="https://focus-bear.github.io/assets/focus-blocked/images/favicon.ico" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      
+      .container {
+        background: white;
+        border-radius: 24px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        max-width: 600px;
+        width: 100%;
+        padding: 60px 50px;
+        text-align: center;
+        animation: slideIn 0.4s ease-out;
+      }
+      
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      .logo {
+        width: 280px;
+        height: 100px;
+        margin: 0 auto 40px;
+      }
+      
+      .logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      
+      h1 {
+        font-size: 32px;
+        font-weight: 700;
+        color: #1a202c;
+        margin-bottom: 12px;
+        line-height: 1.2;
+      }
+      
+      .subtitle {
+        font-size: 18px;
+        color: #718096;
+        margin-bottom: 40px;
+        font-weight: 400;
+      }
+      
+      .block-info {
+        background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+        padding: 30px;
+        border-radius: 16px;
+        margin: 40px 0;
+      }
+      
+      .block-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      
+      .block-row:last-child {
+        margin-bottom: 0;
+      }
+      
+      .block-label {
+        font-size: 14px;
+        color: #744210;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      
+      .block-value {
+        background: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+        font-size: 15px;
+        color: #2d3748;
+        font-weight: 600;
+        word-break: break-all;
+        max-width: 400px;
+      }
+      
+      .stats {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.5);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 13px;
+        color: #744210;
+        font-weight: 500;
+      }
+      
+      .stats-icon {
+        font-size: 16px;
+      }
+      
+      .message {
+        font-size: 16px;
+        color: #4a5568;
+        line-height: 1.6;
+        margin-top: 30px;
+      }
+      
+      .tip {
+        margin-top: 40px;
+        padding: 20px;
+        background: #f7fafc;
+        border-radius: 12px;
+        border-left: 4px solid #667eea;
+      }
+      
+      .tip-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #667eea;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      
+      .tip-text {
+        font-size: 14px;
+        color: #4a5568;
+        line-height: 1.5;
+      }
+      
+      @media (max-width: 640px) {
+        .container {
+          padding: 40px 30px;
+        }
+        
+        .logo {
+          width: 220px;
+          height: 80px;
+          margin-bottom: 30px;
+        }
+        
+        h1 {
+          font-size: 26px;
+        }
+        
+        .subtitle {
+          font-size: 16px;
+        }
+        
+        .block-info {
+          padding: 20px;
+        }
+        
+        .block-row {
+          flex-direction: column;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="logo">
+        <picture>
+          <source
+            srcset="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg"
+            type="image/svg+xml"
+          />
+          <source
+            srcset="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.webp"
+            type="image/webp"
+          />
+          <img
+            src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.png"
+            alt="Focus Bear"
+          />
+        </picture>
+      </div>
+      
+      <h1>Site Blocked</h1>
+      <p class="subtitle" id="subtitle">This site is on your blocklist</p>
+      
+      <div class="block-info">
+        <div class="block-row">
+          <span class="block-label">Blocked</span>
+          <span class="block-value" id="blockValue">Loading...</span>
+        </div>
+        
+        <div id="statsContainer"></div>
+      </div>
+      
+      <p class="message" id="message">
+        Take a moment to refocus on what matters most.
+      </p>
+      
+      <div class="tip">
+        <div class="tip-title">
+          <span>💡</span>
+          <span>Productivity Tip</span>
+        </div>
+        <p class="tip-text" id="tipText">
+          Try the Pomodoro technique: 25 minutes of focused work, followed by a 5-minute break.
+        </p>
+      </div>
+    </div>
+
+    <script src="blocked.js"></script>
+  </body>
+</html>
