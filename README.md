@@ -10,10 +10,101 @@ Refer to word docs and [this video](https://drive.google.com/file/d/1Af-z7W5sLIH
 In github repo secrets
 
 ### Dev Commands
-### npm run start:prod
+
+#### npm run start:prod
 start application in production mode
 
-#### mitmproxy
+#### npm run start
+start application in development mode (with hot reload)
+
+### Browser Extension Setup (Recommended)
+
+The extension provides lightweight, browser-native URL blocking without the overhead of system-wide proxying.
+
+#### Prerequisites
+- Node.js (version 20+)
+- Firefox or Chrome/Chromium browser
+
+#### Installation Steps
+
+1. **Install the Native Messaging Host**
+   ```bash
+   npm run install-native-messaging
+   ```
+   
+   This will:
+   - Copy the native host script to `/usr/local/bin/focusbear-native-host`
+   - Install the Firefox manifest to `~/.mozilla/native-messaging-hosts/`
+   - You may need to enter your password (sudo) for the installation
+
+2. **Load the Extension in Firefox**
+   - Open Firefox
+   - Navigate to `about:debugging#/runtime/this-firefox`
+   - Click **"Load Temporary Add-on..."**
+   - Navigate to `src/extension/` in this project
+   - Select the `manifest.json` file
+   
+   The extension icon should appear in your Firefox toolbar.
+
+3. **Start the Electron App**
+   ```bash
+   npm run start
+   ```
+   
+   The app automatically starts a Unix socket server that the native messaging host connects to.
+
+4. **Verify Connection**
+   - Click the Focus Bear extension icon in Firefox
+   - You should see:
+     - ✅ Green status indicator (connected to native host)
+     - ✅ Native host connected to Electron app
+     - Current blocklist entries
+
+5. **Test Blocking**
+   - In the Focus Bear app, add domains to block (e.g., `facebook.com`, `twitter.com`)
+   - Click 'Export (sub)domains to .txt'
+   - The extension automatically receives the updated blocklist via the native messaging host
+   - Try visiting blocked sites - you should see the Focus Bear block page
+
+#### Debugging the Extension
+
+**Check Native Host Logs:**
+```bash
+tail -f /tmp/focusbear-native-host.log
+```
+
+**Inspect Extension Console:**
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Find the Focus Bear extension
+3. Click **"Inspect"** to view console logs and debug
+
+**Verify Socket Connection:**
+```bash
+# Check if socket exists
+ls -la /tmp/focusbear.sock
+
+# Check Electron app logs for socket messages
+# Look for: [Socket] Native host connected
+```
+
+#### Architecture
+
+```
+Electron App → Unix Socket → Native Messaging Host → Browser Extension
+```
+
+- **Electron App**: Manages blocklist, starts socket server on `/tmp/focusbear.sock`
+- **Native Host**: Bridges between Unix socket and browser's native messaging protocol
+- **Extension**: Receives blocklist, blocks URLs using `webRequest` API
+
+For more details, see `docs/BLOCKING.md` and `src/extension/README.md`.
+
+---
+
+### mitmproxy (Deprecated)
+
+> **Note:** The mitmproxy approach is deprecated in favor of the native messaging extension above. It remains documented for reference only.
+
 prerequisites:
 1. install mitmproxy
 sudo apt update
