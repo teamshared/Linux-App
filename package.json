@@ -82,13 +82,15 @@
     "deb": {
       "depends": [
         "python3",
-        "mitmproxy"
-      ]
+        "nodejs"
+      ],
+      "afterInstall": "build/postinst",
+      "afterRemove": "build/prerm"
     },
     "rpm": {
       "depends": [
         "python3",
-        "mitmproxy"
+        "nodejs"
       ]
     },
     "protocols": [
@@ -110,6 +112,23 @@
       {
         "from": "src/python",
         "to": "python",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "src/native-messaging",
+        "to": "native-messaging",
+        "filter": [
+          "host.js",
+          "install.js",
+          "manifest.json",
+          "package.json"
+        ]
+      },
+      {
+        "from": "src/extension",
+        "to": "extension",
         "filter": [
           "**/*"
         ]
