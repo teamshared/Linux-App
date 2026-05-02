@@ -9,12 +9,18 @@ MANIFEST_NAME="com.focusbear.native_host.json"
 # chrome-sandbox must be SUID root for Electron's process sandbox to work
 chmod 4755 "${APP_DIR}/chrome-sandbox" || true
 
-# Create /usr/bin symlink so `focusbear` is on PATH
-ln -sf "${APP_DIR}/focusbear" /usr/bin/focusbear
+# Create a wrapper script at /usr/bin/focusbear instead of a plain symlink.
+# --no-sandbox is required because the install path "/opt/Focus Bear/" contains
+# a space: Electron's internal LaunchProcess splits it, so chrome-sandbox is
+# never found, and the user-namespace fallback is denied by AppArmor's
+# unprivileged_userns profile (sys_admin capability) on this kernel.
+cat > /usr/bin/focusbear << 'WRAPPER'
+#!/bin/sh
+exec "/opt/Focus Bear/focusbear" --no-sandbox "$@"
+WRAPPER
+chmod 755 /usr/bin/focusbear
 
-# Patch the desktop entry Exec to use the symlink path — the default
-# electron-builder value uses "/opt/Focus Bear/focusbear" (space in path)
-# which many desktop environments fail to parse correctly.
+# Patch the desktop entry Exec to use the wrapper (clean path, no spaces).
 DESKTOP_FILE="/usr/share/applications/focusbear.desktop"
 if [ -f "$DESKTOP_FILE" ]; then
     sed -i 's|^Exec=.*|Exec=/usr/bin/focusbear %U|' "$DESKTOP_FILE"
