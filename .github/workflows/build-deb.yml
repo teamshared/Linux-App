@@ -1,25 +1,54 @@
 # ============================================================
 # Focus Bear — Linux Build Pipeline
 # ============================================================
-# Triggered on every push to the `dev` branch.
-
+# Triggered on every push.
+#
 # What this pipeline does:
-#   1. Checks out the code on an Ubuntu runner
-#   2. Sets up Node.js and restores caches to speed up the build
-#   3. Installs fakeroot, required by electron-builder to produce .deb packages
-#   4. Installs npm dependencies
-#   5. Injects Auth0 secrets into a .env file so Vite can embed them at build time
-#   6. Runs `npm run package:all` which:
-#        a. Builds the React frontend with Vite (output: dist-react/)
-#        b. Packages the Electron app with electron-builder (output: dist/)
-#           producing two Linux formats: AppImage, .deb
-#   7. Uploads each package as a downloadable artifact in the Actions run
-
-# Package formats produced:
-#   AppImage — universal, runs on any Linux distro without installing
-#   .deb     — for Debian, Ubuntu, Linux Mint and derivatives
-
-# GITHUB_TOKEN is provided automatically by GitHub Actions so no setup needed.
+#   1.  Checks out the code on an Ubuntu runner
+#   2.  Sets up Node.js and restores caches to speed up the build
+#   3.  Caches Electron binaries and electron-builder tools
+#   4.  Installs system dependencies: fakeroot (required by electron-builder
+#       to produce .deb packages) and zip (bundled as a .deb runtime dep;
+#       used by the app to create focusbear-extension.xpi on first launch)
+#   5.  Makes build/postinst and build/prerm executable so electron-builder
+#       embeds them correctly in the .deb control archive
+#   6.  Installs npm dependencies
+#   7.  Injects Auth0 secrets into .env so Vite can embed them at build time
+#   8.  Runs `npm run package:all` which:
+#         a. Builds the React frontend with Vite        → dist-react/
+#         b. Packages with electron-builder             → dist/
+#              AppImage  — universal, runs on any Linux without installing
+#              .deb      — Debian / Ubuntu / Mint; installs via `sudo dpkg -i`
+#   9.  Uploads each artifact to the Actions run
+#
+# What the .deb package does after `sudo dpkg -i`:
+#   postinst (runs as root):
+#     • Sets chrome-sandbox SUID so Electron's process sandbox works
+#     • Creates /usr/bin/focusbear symlink so the command is on PATH
+#     • Refreshes the desktop application database
+#     • Writes /usr/local/bin/focusbear-native-host (wrapper → packaged host.js)
+#     • Installs system-wide Firefox native messaging manifest
+#       → /usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#   prerm (runs as root on uninstall):
+#     • Removes the /usr/bin symlink, the wrapper, and the system manifest
+#
+# What the Electron app does on first launch (installNativeMessaging):
+#   • Copies host.js + package.json to ~/.local/share/focusbear/native-messaging/
+#     (home-dir copy keeps files reachable by snap Firefox's sandbox)
+#   • Copies extension files to ~/.local/share/focusbear/extension/
+#   • Writes ~/.local/bin/focusbear-native-host pointing to the home-dir copy
+#   • Writes native messaging manifests for both regular Firefox and snap Firefox
+#       ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#       ~/snap/firefox/common/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#   • Packs the extension as focusbear-extension.xpi so snap Firefox's XDG
+#     portal restriction (single-file access only) is not a problem
+#
+# extraResources bundled into the package:
+#   resources/native-messaging/  — host.js, package.json, install.js, manifest.json
+#   resources/extension/         — all Firefox extension files
+#   resources/python/            — Python helper scripts
+#
+# GITHUB_TOKEN is provided automatically by GitHub Actions; no setup needed.
 # ============================================================
 
 name: Build Linux App
@@ -27,14 +56,17 @@ name: Build Linux App
 on:
   push:
     # branches:
-    #   - packaging/1-packaging-for-debian  # Run this pipeline only when code is pushed to the dev branch
+    #   - dev   # uncomment to restrict to the dev branch only
 
 jobs:
   build:
     name: Build & Package (Linux)
-    runs-on: ubuntu-latest  # Use the latest Ubuntu runner; matches our Linux target platform
+    runs-on: ubuntu-latest
 
     steps:
+      # ----------------------------------------------------------
+      # 1. Checkout
+      # ----------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -71,20 +103,33 @@ jobs:
 
       # ----------------------------------------------------------
       # 5. System dependencies
+      #    fakeroot — lets electron-builder build .deb without root
+      #    zip      — declared as a .deb runtime dep; the app uses it
+      #               on first launch to create focusbear-extension.xpi
+      #               so snap Firefox (XDG portal) can load the extension
+      #               from a single file instead of a directory
       # ----------------------------------------------------------
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y fakeroot
+          sudo apt-get install -y fakeroot zip
 
       # ----------------------------------------------------------
-      # 6. Install npm dependencies
+      # 6. Make installer scripts executable
+      #    electron-builder embeds these into the .deb control archive;
+      #    they must be executable or dpkg will refuse to run them.
+      # ----------------------------------------------------------
+      - name: Make installer scripts executable
+        run: chmod +x build/postinst build/prerm
+
+      # ----------------------------------------------------------
+      # 7. Install npm dependencies
       # ----------------------------------------------------------
       - name: Install npm dependencies
         run: npm ci
 
       # ----------------------------------------------------------
-      # 7. Inject Auth0 credentials into .env
+      # 8. Inject Auth0 credentials into .env
       # ----------------------------------------------------------
       - name: Create .env file
         run: |
@@ -95,7 +140,7 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}
 
       # ----------------------------------------------------------
-      # 8. Verify secrets (partial reveal , no sensitive data exposed)
+      # 9. Verify secrets (partial reveal, no sensitive data exposed)
       # ----------------------------------------------------------
       - name: Verify secret format
         run: |
@@ -106,7 +151,8 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}
 
       # ----------------------------------------------------------
-      # 9. Build and package
+      # 10. Build and package
+      #     Produces: dist/*.AppImage  dist/*.deb
       # ----------------------------------------------------------
       - name: Build and package
         run: npm run package:all
@@ -114,7 +160,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ----------------------------------------------------------
-      # 10. Upload artifacts
+      # 11. Upload artifacts
       # ----------------------------------------------------------
       - name: Upload AppImage
         uses: actions/upload-artifact@v4

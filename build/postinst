@@ -12,6 +12,14 @@ chmod 4755 "${APP_DIR}/chrome-sandbox" || true
 # Create /usr/bin symlink so `focusbear` is on PATH
 ln -sf "${APP_DIR}/focusbear" /usr/bin/focusbear
 
+# Patch the desktop entry Exec to use the symlink path — the default
+# electron-builder value uses "/opt/Focus Bear/focusbear" (space in path)
+# which many desktop environments fail to parse correctly.
+DESKTOP_FILE="/usr/share/applications/focusbear.desktop"
+if [ -f "$DESKTOP_FILE" ]; then
+    sed -i 's|^Exec=.*|Exec=/usr/bin/focusbear %U|' "$DESKTOP_FILE"
+fi
+
 # Refresh desktop application database
 if hash update-desktop-database 2>/dev/null; then
     update-desktop-database --quiet

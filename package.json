@@ -82,7 +82,8 @@
     "deb": {
       "depends": [
         "python3",
-        "nodejs"
+        "nodejs",
+        "zip"
       ],
       "afterInstall": "build/postinst",
       "afterRemove": "build/prerm"
