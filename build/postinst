@@ -1,0 +1,67 @@
+#!/bin/bash
+set -e
+
+APP_DIR="/opt/Focus Bear"
+NATIVE_HOST_DEST="/usr/local/bin/focusbear-native-host"
+FIREFOX_MANIFEST_DIR="/usr/lib/mozilla/native-messaging-hosts"
+MANIFEST_NAME="com.focusbear.native_host.json"
+
+# chrome-sandbox must be SUID root for Electron's process sandbox to work
+chmod 4755 "${APP_DIR}/chrome-sandbox" || true
+
+# Create a wrapper script at /usr/bin/focusbear instead of a plain symlink.
+# --no-sandbox is required because the install path "/opt/Focus Bear/" contains
+# a space: Electron's internal LaunchProcess splits it, so chrome-sandbox is
+# never found, and the user-namespace fallback is denied by AppArmor's
+# unprivileged_userns profile (sys_admin capability) on this kernel.
+cat > /usr/bin/focusbear << 'WRAPPER'
+#!/bin/sh
+exec "/opt/Focus Bear/focusbear" --no-sandbox "$@"
+WRAPPER
+chmod 755 /usr/bin/focusbear
+
+# Patch the desktop entry Exec to use the wrapper (clean path, no spaces).
+DESKTOP_FILE="/usr/share/applications/focusbear.desktop"
+if [ -f "$DESKTOP_FILE" ]; then
+    sed -i 's|^Exec=.*|Exec=/usr/bin/focusbear %U|' "$DESKTOP_FILE"
+fi
+
+# Refresh desktop application database
+if hash update-desktop-database 2>/dev/null; then
+    update-desktop-database --quiet
+fi
+
+# ── Native Messaging Host ────────────────────────────────────────────────────
+
+HOST_JS="${APP_DIR}/resources/native-messaging/host.js"
+
+if [ ! -f "$HOST_JS" ]; then
+    echo "Warning: native messaging host script not found; browser URL blocking will not work." >&2
+    exit 0
+fi
+
+# Wrapper script at the path Firefox expects (set in the manifest)
+cat > "$NATIVE_HOST_DEST" << EOF
+#!/bin/sh
+exec node "$HOST_JS" "\$@"
+EOF
+chmod 755 "$NATIVE_HOST_DEST"
+
+# System-wide Firefox manifest (applies to all users without per-user setup)
+mkdir -p "$FIREFOX_MANIFEST_DIR"
+MANIFEST_SRC="${APP_DIR}/resources/native-messaging/$MANIFEST_NAME"
+if [ -f "$MANIFEST_SRC" ]; then
+    cp "$MANIFEST_SRC" "$FIREFOX_MANIFEST_DIR/$MANIFEST_NAME"
+else
+    cat > "$FIREFOX_MANIFEST_DIR/$MANIFEST_NAME" << 'MANIFEST'
+{
+  "name": "com.focusbear.native_host",
+  "description": "Focus Bear Native Messaging Host",
+  "path": "/usr/local/bin/focusbear-native-host",
+  "type": "stdio",
+  "allowed_extensions": ["focusbear@focusbear.io"]
+}
+MANIFEST
+fi
+
+echo "Focus Bear installed. Extension files are at: ${APP_DIR}/resources/extension/"

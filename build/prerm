@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+rm -f /usr/bin/focusbear
+rm -f /usr/local/bin/focusbear-native-host
+rm -f /usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json

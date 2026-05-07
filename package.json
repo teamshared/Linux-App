@@ -81,12 +81,17 @@
     },
     "deb": {
       "depends": [
-        "python3"
-      ]
+        "python3",
+        "nodejs",
+        "zip"
+      ],
+      "afterInstall": "build/postinst",
+      "afterRemove": "build/prerm"
     },
     "rpm": {
       "depends": [
-        "python3"
+        "python3",
+        "nodejs"
       ]
     },
     "protocols": [
@@ -103,6 +108,32 @@
       "src/ui/**/*",
       "public/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src/python",
+        "to": "python",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "src/native-messaging",
+        "to": "native-messaging",
+        "filter": [
+          "host.js",
+          "install.js",
+          "manifest.json",
+          "package.json"
+        ]
+      },
+      {
+        "from": "src/extension",
+        "to": "extension",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "directories": {
       "buildResources": "build",

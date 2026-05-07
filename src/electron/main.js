@@ -1,11 +1,12 @@
 import { join, dirname } from 'path';
+import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
-import { exec, execFile, spawn } from 'child_process';
+import { exec, execFile, spawn, execSync } from 'child_process';
 import "./Blocker.js"
 import { setBroadcastFunction } from './Blocker.js';
 import { focusState } from './focusState.js';
@@ -100,20 +101,69 @@ function broadcastBlocklistUpdate(blocklist) {
   });
 }
 
-// Install native messaging host on startup
+// Install native messaging host on startup — runs in-process, no subprocess needed.
+// Files are copied into ~/.local/share/focusbear/ so snap Firefox's sandbox can reach them.
 async function installNativeMessaging() {
-  const installerPath = join(__dirname, '../native-messaging/install.js');
   try {
-    console.log('[Native Messaging] Installing native messaging host...');
-    execFile('node', [installerPath], (error, stdout, stderr) => {
-      if (error) {
-        console.error('[Native Messaging] Installation failed:', error.message);
-      } else {
-        console.log('[Native Messaging] Installation output:', stdout);
-      }
-    });
+    const nativeSrcDir = app.isPackaged
+      ? join(process.resourcesPath, 'native-messaging')
+      : join(__dirname, '..', 'native-messaging');
+    const extensionSrcDir = app.isPackaged
+      ? join(process.resourcesPath, 'extension')
+      : join(__dirname, '..', 'extension');
+
+    // Copy host.js + package.json into home so snap Firefox's sandboxed process can read them
+    const localNativeDir = join(homedir(), '.local', 'share', 'focusbear', 'native-messaging');
+    await fs.mkdir(localNativeDir, { recursive: true });
+    await fs.copyFile(join(nativeSrcDir, 'host.js'),     join(localNativeDir, 'host.js'));
+    await fs.copyFile(join(nativeSrcDir, 'package.json'), join(localNativeDir, 'package.json'));
+
+    // Copy extension files into home so snap Firefox can load them from $HOME
+    const localExtDir = join(homedir(), '.local', 'share', 'focusbear', 'extension');
+    await fs.mkdir(localExtDir, { recursive: true });
+    for (const f of await fs.readdir(extensionSrcDir)) {
+      await fs.copyFile(join(extensionSrcDir, f), join(localExtDir, f)).catch(() => {});
+    }
+
+    // Wrapper at ~/.local/bin points to the home-dir copy of host.js
+    const wrapperDir = join(homedir(), '.local', 'bin');
+    const wrapperPath = join(wrapperDir, 'focusbear-native-host');
+    await fs.mkdir(wrapperDir, { recursive: true });
+    await fs.writeFile(wrapperPath, `#!/bin/sh\nexec node "${join(localNativeDir, 'host.js')}" "$@"\n`);
+    await fs.chmod(wrapperPath, 0o755);
+
+    // Write manifest to all known Firefox locations (regular + snap)
+    const manifest = JSON.stringify({
+      name: 'com.focusbear.native_host',
+      description: 'Focus Bear Native Messaging Host',
+      path: wrapperPath,
+      type: 'stdio',
+      allowed_extensions: ['focusbear@focusbear.io']
+    }, null, 2);
+    for (const dir of [
+      join(homedir(), '.mozilla', 'native-messaging-hosts'),
+      join(homedir(), 'snap', 'firefox', 'common', '.mozilla', 'native-messaging-hosts'),
+    ]) {
+      await fs.mkdir(dir, { recursive: true }).catch(() => {});
+      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), manifest).catch(() => {});
+    }
+
+    // Pack extension as .xpi (zip) so snap Firefox's portal grants access to a single file
+    // containing all extension scripts — selecting manifest.json alone only mounts that one file.
+    const xpiPath = join(homedir(), '.local', 'share', 'focusbear', 'focusbear-extension.xpi');
+    try {
+      try { await fs.unlink(xpiPath); } catch {}
+      execSync(`cd "${localExtDir}" && zip -r "${xpiPath}" .`, { stdio: 'pipe' });
+      console.log('[Native Messaging] Host installed at', wrapperPath);
+      console.log('[Native Messaging] Extension .xpi ready at', xpiPath);
+      console.log('[Native Messaging] Firefox: about:debugging → Load Temporary Add-on → select', xpiPath);
+    } catch (zipErr) {
+      console.warn('[Native Messaging] Could not create .xpi:', zipErr.message);
+      console.log('[Native Messaging] Host installed at', wrapperPath);
+      console.log('[Native Messaging] Load extension from:', join(localExtDir, 'manifest.json'));
+    }
   } catch (error) {
-    console.error('[Native Messaging] Failed to run installer:', error);
+    console.error('[Native Messaging] Setup failed:', error.message);
   }
 }
 
@@ -155,6 +205,7 @@ if (!gotTheLock) {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     }
   });
