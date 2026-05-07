@@ -7,7 +7,6 @@ import MotivationPage from './motivation';
 import BlockingSchedule from './blocking-schedule'
 import AccountPage from './account';
 import Keywords_page from './keyword-page';
-import SetupGuide from './setup-guide';
 import UninstallPage from './uninstall-page';
 import { nativeAuthService } from '../services/nativeAuth.js';
 
@@ -81,7 +80,6 @@ const PreferencesPage = function({ user }) {
         'Keyword Blocking': null
       },
       'Settings': {
-        'Setup Guide': null, // Uses React component
         'Super Distracting Sites': null, // Uses React component
         'Account': null, // Uses React component
         'General': null,
@@ -110,7 +108,7 @@ const PreferencesPage = function({ user }) {
   };
 
   const tabs = ['Help', 'Blocks', 'Settings', 'Edit Habits', 'Motivation'];
-  const settingsTabs = ['Setup Guide', 'General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
+  const settingsTabs = ['General', 'Super Distracting Sites', 'Account', 'AI', 'Uninstall'];
   const blocksTabs = ['Blocking Schedule', 'Super Distracting Sites', 'Keyword Blocking'];
 
   return (
@@ -178,12 +176,6 @@ const PreferencesPage = function({ user }) {
         </div>
       )}
 
-      {(activeTab === 'Settings' && activeSettingsTab === 'Setup Guide') && (
-        <div className="content-area with-subnav">
-          <SetupGuide />
-        </div>
-      )}
-
       {(activeTab === 'Settings' && activeSettingsTab === 'Account') && (
         <div className="content-area with-subnav">
           <AccountPage />
@@ -219,7 +211,7 @@ const PreferencesPage = function({ user }) {
     const webViewId = getWebViewForCurrentTab();
 
     return !webViewId && (
-      (activeTab === 'Settings' && (activeSettingsTab === 'Super Distracting Sites' || activeSettingsTab === 'Account' || activeSettingsTab === 'Setup Guide')) ||
+      (activeTab === 'Settings' && (activeSettingsTab === 'Super Distracting Sites' || activeSettingsTab === 'Account')) ||
       (activeTab === 'Blocks' && activeBlocksTab === 'Super Distracting Sites')
     );
   }

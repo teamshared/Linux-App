@@ -164,7 +164,7 @@ browser.webRequest.onBeforeRequest.addListener(
           // Redirect to block page with info
           const blockPageUrl = browser.runtime.getURL('blocked.html') +
             `?url=${encodeURIComponent(url)}` +
-            `&value=${encodeURIComponent(matchedPattern)}` +  // Using 'value' to match mitmproxy template
+            `&value=${encodeURIComponent(matchedPattern)}` +
             `&reason=${blockType}`;
           
           return { redirectUrl: blockPageUrl };

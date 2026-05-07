@@ -183,7 +183,6 @@ const urlGrabber = new SimpleUrlGrabber();
 
 // Unified focus session state
 let isFocusActive = false;
-let mitmproxyProcess = null;
 
 function getWebviewContainerBounds() {
     const bounds = mainWindow.getBounds();
@@ -342,48 +341,19 @@ ipcMain.on('focus-session-true', function(event) {
         return;
     }
 
-    startMitmproxyBlocker((error, result) => {
-        if (!error) {
-            isFocusActive = true;
-            focusState.setActive(true);
-            broadcastFocusState(true);
-            console.log('Focus session started with mitmproxy');
-        }
+    // Native messaging extension handles blocking
+    isFocusActive = true;
+    focusState.setActive(true);
+    broadcastFocusState(true);
+    console.log('Focus session started (native messaging extension)');
 
-        try {
-            if (event.sender && !event.sender.isDestroyed()) {
-                event.sender.send('focus-session-result', error ? `Error: ${result}` : result);
-            }
-        } catch (e) {
-            console.log('Could not send result to original sender (window destroyed)');
+    try {
+        if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('focus-session-result', 'Focus session started');
         }
-    });
-
-    //Uncomment if using hosts file method
-    /*
-    // Hosts file blocking is deprecated in favor of native messaging
-    const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
-    const command = `pkexec node "${scriptPath}" block`;
-
-    console.log(`Starting focus session (deprecated): ${command}`);
-
-    exec(command, (error, stdout, stderr) => {
-        if (!error) {
-            isFocusActive = true;
-            focusState.setActive(true)
-            broadcastFocusState(true);
-            console.log('Focus session started with hosts file');
-        }
-        const result = error ? `Error: ${stderr || error.message}` : stdout;
-        try {
-            if (event.sender && !event.sender.isDestroyed()) {
-                event.sender.send('focus-session-result', result);
-            }
-        } catch (e) {
-            console.log('Could not send result to original sender (window destroyed)');
-        }
-    });
-    */
+    } catch (e) {
+        console.log('Could not send result to original sender (window destroyed)');
+    }
 });
 
 ipcMain.on('focus-session-false', function(event) {
@@ -392,8 +362,7 @@ ipcMain.on('focus-session-false', function(event) {
         return;
     }
 
-    // Stop mitmproxy blocker
-    stopMitmproxyBlocker();
+    // Native messaging extension handles blocking
     isFocusActive = false;
     focusState.setActive(false);
     broadcastFocusState(false);
@@ -406,33 +375,6 @@ ipcMain.on('focus-session-false', function(event) {
     } catch (e) {
         console.log('Could not send result to original sender (window destroyed)');
     }
-
-    // Uncomment if using hosts file method
-    /*
-    const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
-    const command = `pkexec node "${scriptPath}" unblock`;
-
-    console.log(`Ending focus session: ${command}`);
-
-    exec(command, (error, stdout, stderr) => {
-        if (!error) {
-            isFocusActive = false;
-            focusState.setActive(false);
-            broadcastFocusState(false);
-            console.log('Focus session ended');
-        }
-
-        const result = error ? `Error: ${stderr || error.message}` : stdout;
-
-        try {
-            if (event.sender && !event.sender.isDestroyed()) {
-                event.sender.send('focus-session-result', result);
-            }
-        } catch (e) {
-            console.log('Could not send result to original sender (window destroyed)');
-        }
-    });
-    */
 });
 
 // URL monitoring
@@ -462,7 +404,6 @@ app.on('window-all-closed', function() {
 
 app.on('before-quit', function() {
     stopMonitoring()
-    stopMitmproxyBlocker();
 
     // Close socket server
     if (socketServer) {
@@ -574,135 +515,6 @@ function handleAuthRedirect(url) {
     }
 }
 
-// SYSTEM PROXY FUNCTIONS
-function setSystemProxy(host, port, callback) {
-    const scriptPath = app.isPackaged
-        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
-        : join(__dirname, '../python/set_system_proxy.py');
-    execFile('python3', [scriptPath, 'set', host, port], (err, stdout, stderr) => {
-        if (err) {
-            console.error('Proxy set error:', stderr);
-            if (callback) callback(err, stderr);
-        } else {
-            console.log('Proxy set:', stdout);
-            if (callback) callback(null, stdout);
-        }
-    });
-}
-
-function unsetSystemProxy(callback) {
-    const scriptPath = app.isPackaged
-        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
-        : join(__dirname, '../python/set_system_proxy.py');
-    execFile('python3', [scriptPath, 'unset'], (err, stdout, stderr) => {
-        if (err) {
-            console.error('Proxy unset error:', stderr);
-            if (callback) callback(err, stderr);
-        } else {
-            console.log('Proxy unset:', stdout);
-            if (callback) callback(null, stdout);
-        }
-    });
-}
-
-// MITMPROXY BLOCKING FUNCTIONS
-function checkCertificateExists(callback) {
-    const certPath = join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
-    fs.access(certPath)
-        .then(() => callback(true))
-        .catch(() => callback(false));
-}
-
-function startMitmproxyBlocker(callback) {
-    const scriptPath = app.isPackaged
-        ? join(process.resourcesPath, 'python', 'mitmproxy_blocker.py')
-        : join(__dirname, '../python/mitmproxy_blocker.py');
-    const proxyHost = '127.0.0.1';
-    const proxyPort = 8080;
-
-    setSystemProxy(proxyHost, proxyPort, (err, result) => {
-        if (err) {
-            callback(err, 'Failed to set system proxy');
-            return;
-        }
-
-        console.log('Starting mitmproxy blocker...');
-
-        mitmproxyProcess = spawn('mitmdump', [
-            '-s', scriptPath,
-            '--set', 'block_global=false'
-        ]);
-
-        mitmproxyProcess.stdout.on('data', (data) => {
-            console.log(`mitmproxy: ${data}`);
-        });
-
-        mitmproxyProcess.stderr.on('data', (data) => {
-            console.error(`mitmproxy error: ${data}`);
-        });
-
-        mitmproxyProcess.on('close', (code) => {
-            console.log(`mitmproxy process exited with code ${code}`);
-            mitmproxyProcess = null;
-            isFocusActive = false;
-        });
-
-        mitmproxyProcess.on('error', (error) => {
-            console.error('Failed to start mitmproxy:', error);
-            callback(error, `Failed to start mitmproxy: ${error.message}`);
-            return;
-        });
-
-        setTimeout(() => {
-            callback(null, 'mitmproxy blocker started');
-        }, 1000);
-    });
-}
-
-function stopMitmproxyBlocker() {
-    let proxyUnsetAttempted = false; // Flag to ensure proxy is unset only once
-
-    // 1. Stop mitmproxy
-    if (mitmproxyProcess) {
-        console.log('Stopping mitmproxy blocker...');
-
-        // Use an event listener to run unset AFTER mitmproxy closes,
-        // OR run it immediately if mitmproxy fails to stop.
-
-        const cleanupAndUnset = () => {
-            if (!proxyUnsetAttempted) {
-                proxyUnsetAttempted = true;
-                unsetSystemProxy((err, result) => {
-                    if (err) {
-                        console.error('Failed to unset system proxy:', result);
-                    } else {
-                        console.log('System proxy unset:', result);
-                    }
-                });
-            }
-        };
-
-        // Ensure cleanup happens when the process ends (success or failure)
-        mitmproxyProcess.once('close', cleanupAndUnset);
-        mitmproxyProcess.once('error', cleanupAndUnset);
-
-        // Send kill signal (SIGTERM is preferred for graceful shutdown)
-        mitmproxyProcess.kill('SIGTERM');
-        mitmproxyProcess = null;
-
-    } else {
-        // 2. If mitmproxy wasn't running, still try to unset the proxy just in case.
-        console.log('mitmproxy not running. Attempting proxy cleanup...');
-        unsetSystemProxy((err, result) => {
-            if (err) {
-                console.error('Failed to unset system proxy:', result);
-            } else {
-                console.log('System proxy unset:', result);
-            }
-        });
-    }
-}
-
 //Webiew Handling
 ipcMain.on('switch-webview', function(event, webViewId, metadata) {
     console.log(`[Main Process] switch-webview called for ${webViewId}`);
@@ -739,18 +551,6 @@ ipcMain.on('hide-all-webviews', function(event) {
 ipcMain.on('open-auth-window', function(event, url) {
     console.log('Opening auth window with URL:', url);
     openAuthWindow(url);
-})
-
-ipcMain.handle('check-certificate-exists', async function() {
-    return new Promise((resolve) => {
-        checkCertificateExists((exists) => {
-            resolve(exists);
-        });
-    });
-})
-
-ipcMain.handle('get-certificate-path', async function() {
-    return join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
 })
 
 
@@ -904,23 +704,10 @@ ipcMain.handle('cleanup-app-data', async function() {
 
   try {
     if (isFocusActive) {
-      await stopMitmproxyBlocker();
+      isFocusActive = false;
+      focusState.setActive(false);
       details.push('Stopped active focus session');
     }
-
-    const pythonScriptPath = app.isPackaged
-      ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
-      : join(app.getAppPath(), 'src', 'python', 'set_system_proxy.py');
-
-    await new Promise((resolve) => {
-      exec(`python3 "${pythonScriptPath}" unset`, (error) => {
-        if (error) {
-          console.error('Failed to unset proxy:', error);
-        }
-        details.push('Reset system proxy settings');
-        resolve();
-      });
-    });
 
     try {
       await fs.unlink('/tmp/focusbear-blocklist.txt');
@@ -934,15 +721,6 @@ ipcMain.handle('cleanup-app-data', async function() {
       details.push('Removed keywords file');
     } catch (error) {
       console.log('Keywords file not found or already removed');
-    }
-
-    const homeDir = app.getPath('home');
-    const proxyEnvPath = join(homeDir, '.focus_proxy_env');
-    try {
-      await fs.unlink(proxyEnvPath);
-      details.push('Removed proxy environment file');
-    } catch (error) {
-      console.log('Proxy env file not found or already removed');
     }
 
     const settingsPath = getSettingsPath();
