@@ -22,6 +22,7 @@ dotenv.config();
 const SOCKET_PATH = '/tmp/focusbear.sock';
 let socketServer = null;
 let nativeHostClients = [];
+let currentBlocklist = [];
 
 async function startSocketServer() {
   // Remove existing socket file if it exists
@@ -35,8 +36,14 @@ async function startSocketServer() {
     console.log('[Socket] Native host connected');
     nativeHostClients.push(socket);
 
-    // Store the current blocklist for this client
-    socket.currentBlocklist = [];
+    // Push current blocklist immediately so new connections don't wait for a GET_BLOCKLIST
+    if (currentBlocklist.length > 0) {
+      socket.write(JSON.stringify({
+        type: 'BLOCKLIST_UPDATE',
+        data: currentBlocklist,
+        timestamp: Date.now()
+      }) + '\n');
+    }
 
     socket.on('data', (data) => {
       const lines = data.toString().split('\n').filter(line => line.trim());
@@ -47,11 +54,10 @@ async function startSocketServer() {
           console.log('[Socket] Received from native host:', message.type);
 
           if (message.type === 'GET_BLOCKLIST') {
-            // Send the current in-memory blocklist
-            console.log(`[Socket] Sending blocklist: ${socket.currentBlocklist.length} entries`);
+            console.log(`[Socket] Sending blocklist: ${currentBlocklist.length} entries`);
             socket.write(JSON.stringify({
               type: 'BLOCKLIST_RESPONSE',
-              data: socket.currentBlocklist,
+              data: currentBlocklist,
               timestamp: Date.now()
             }) + '\n');
           }
@@ -82,6 +88,8 @@ async function startSocketServer() {
 
 // Broadcast blocklist update to all connected native hosts
 function broadcastBlocklistUpdate(blocklist) {
+  currentBlocklist = blocklist;
+
   const message = JSON.stringify({
     type: 'BLOCKLIST_UPDATE',
     data: blocklist,
@@ -92,8 +100,6 @@ function broadcastBlocklistUpdate(blocklist) {
 
   nativeHostClients.forEach(client => {
     try {
-      // Update the stored blocklist for each client
-      client.currentBlocklist = blocklist;
       client.write(message);
     } catch (error) {
       console.error('[Socket] Error broadcasting to client:', error);
@@ -345,6 +351,7 @@ ipcMain.on('focus-session-true', function(event) {
     isFocusActive = true;
     focusState.setActive(true);
     broadcastFocusState(true);
+    broadcastBlocklistUpdate(currentBlocklist);
     console.log('Focus session started (native messaging extension)');
 
     try {
