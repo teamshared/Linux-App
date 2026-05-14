@@ -243,11 +243,16 @@ app.on("ready", function(){
     // Install native messaging host
     installNativeMessaging();
 
+    // --hidden: skip showing the main window at startup. Used by the systemd
+    // user service so logging in doesn't flash the window onscreen — the tray
+    // icon is still created, and clicking it opens the window normally.
+    const startHidden = process.argv.includes('--hidden');
+
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
         height: 850,
         width: 1000,
-        show: true,
+        show: !startHidden,
         webviewTag: true,
         webPreferences: {
             preload: join(app.getAppPath(), "/src/electron/preload.js"),

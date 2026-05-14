@@ -82,6 +82,58 @@ If you ship a higher-resolution master (≥512×512), update `public/bear-icon.p
 
 ---
 
+## Run as a systemd User Service
+
+`build/focusbear.service` is shipped in the `.rpm` (and `.deb`) so Focus Bear can run as a background service that auto-restarts on crash. The unit is installed at `/usr/lib/systemd/user/focusbear.service` by `%post` and is **not** auto-enabled — that's deliberate, since the root scriptlet can't enable a per-user unit on behalf of every user on the machine.
+
+### Why user-level, not system-level
+
+Focus Bear is a GUI app: it draws a window, owns a tray icon, reads the user's Firefox profile, and writes to `~/.local/share/focusbear/`. A root-owned system unit would have no `DISPLAY`, wrong `XDG_RUNTIME_DIR`, and no access to the user's home. `systemctl --user` inherits the desktop session environment automatically.
+
+### Enable
+
+After installing the `.rpm` (or `.deb`):
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now focusbear
+```
+
+`enable --now` does two things: marks the unit to start on every login (`WantedBy=graphical-session.target`) and starts it immediately in the current session. The `ExecStart` line passes `--hidden`, so Focus Bear comes up with only its tray icon — click it to open the window.
+
+### What the restart policy does
+
+```ini
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=120
+StartLimitBurst=5
+```
+
+- A crash, OOM kill, or non-zero exit → systemd waits 5 seconds and respawns.
+- A clean quit from the tray menu (exit code 0) → systemd does **not** respawn. The user asked to quit; respect that.
+- More than 5 restarts in 120 seconds → systemd gives up. Check `systemctl --user status focusbear` and the journal to find the root cause instead of hot-looping forever.
+
+### Inspect / control
+
+```bash
+systemctl --user status focusbear         # running? exit code? recent log lines
+systemctl --user restart focusbear        # manual restart
+journalctl --user -u focusbear -f         # live tail of stdout/stderr
+systemctl --user stop focusbear           # stop for this session
+systemctl --user disable --now focusbear  # turn off auto-start permanently
+```
+
+### Why AppImage isn't covered
+
+The AppImage launcher path is wherever the user dropped the `.AppImage` file — there's no stable absolute path to bake into `ExecStart=`. If you want service-managed Focus Bear, install the `.rpm` or `.deb`. The AppImage is intended for portable / no-install usage.
+
+### Uninstall
+
+`%preun` removes `/usr/lib/systemd/user/focusbear.service` when the package is fully removed (not on upgrade — see the scriptlet section above). Per-user `enable` symlinks at `~/.config/systemd/user/...wants/focusbear.service` become dangling and are harmless; they go away when the user runs `systemctl --user disable focusbear` or simply on the next `daemon-reload`.
+
+---
+
 ## Build Locally
 
 Prerequisites (on a Debian/Ubuntu dev box — the CI runner uses the same):

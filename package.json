@@ -136,6 +136,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/focusbear.service",
+        "to": "focusbear.service"
       }
     ],
     "directories": {
