@@ -7,8 +7,12 @@ set -e
 
 APP_DIR="/opt/Focus Bear"
 NATIVE_HOST_DEST="/usr/local/bin/focusbear-native-host"
-FIREFOX_MANIFEST_DIR="/usr/lib/mozilla/native-messaging-hosts"
 MANIFEST_NAME="com.focusbear.native_host.json"
+# Fedora/RHEL-packaged Firefox is built with --libdir=/usr/lib64 and scans
+# /usr/lib64/mozilla/native-messaging-hosts on x86_64; Mozilla's own tarball
+# and openSUSE's Firefox scan /usr/lib. Write to both so the manifest is
+# discovered regardless of which Firefox build is installed.
+FIREFOX_MANIFEST_DIRS="/usr/lib/mozilla/native-messaging-hosts /usr/lib64/mozilla/native-messaging-hosts"
 
 # chrome-sandbox must be SUID root for Electron's process sandbox to work
 chmod 4755 "${APP_DIR}/chrome-sandbox" || true
@@ -48,12 +52,13 @@ exec node "$HOST_JS" "\$@"
 EOF
 chmod 755 "$NATIVE_HOST_DEST"
 
-mkdir -p "$FIREFOX_MANIFEST_DIR"
 MANIFEST_SRC="${APP_DIR}/resources/native-messaging/$MANIFEST_NAME"
-if [ -f "$MANIFEST_SRC" ]; then
-    cp "$MANIFEST_SRC" "$FIREFOX_MANIFEST_DIR/$MANIFEST_NAME"
-else
-    cat > "$FIREFOX_MANIFEST_DIR/$MANIFEST_NAME" << 'MANIFEST'
+for dir in $FIREFOX_MANIFEST_DIRS; do
+    mkdir -p "$dir"
+    if [ -f "$MANIFEST_SRC" ]; then
+        cp "$MANIFEST_SRC" "$dir/$MANIFEST_NAME"
+    else
+        cat > "$dir/$MANIFEST_NAME" << 'MANIFEST'
 {
   "name": "com.focusbear.native_host",
   "description": "Focus Bear Native Messaging Host",
@@ -62,6 +67,7 @@ else
   "allowed_extensions": ["focusbear@focusbear.io"]
 }
 MANIFEST
-fi
+    fi
+done
 
 echo "Focus Bear installed. Extension files are at: ${APP_DIR}/resources/extension/"

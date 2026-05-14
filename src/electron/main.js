@@ -4,6 +4,17 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
+
+// AppImage mounts itself read-only via squashfs+FUSE, which strips the SUID
+// bit from chrome-sandbox. On systems where Electron can't fall back to the
+// user-namespace sandbox (AppArmor unprivileged_userns profile, or
+// /proc/sys/kernel/unprivileged_userns_clone = 0) the app aborts at launch.
+// The .deb/.rpm install wrappers pass --no-sandbox for the same reason; the
+// AppImage has no install step, so we set the switch here. process.env.APPIMAGE
+// is set by the AppImage runtime and is the canonical "am I in an AppImage" probe.
+if (process.env.APPIMAGE) {
+    app.commandLine.appendSwitch('no-sandbox');
+}
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn, execSync } from 'child_process';
@@ -125,11 +136,21 @@ async function installNativeMessaging() {
       await fs.copyFile(join(extensionSrcDir, f), join(localExtDir, f)).catch(() => {});
     }
 
-    // Wrapper at ~/.local/bin points to the home-dir copy of host.js
+    // Wrapper at ~/.local/bin points to the home-dir copy of host.js.
+    // Under AppImage we can't declare a runtime dep on `nodejs`, so users
+    // without node-on-PATH would get a silently broken native host. Use
+    // Electron's built-in Node (ELECTRON_RUN_AS_NODE=1) and reference the
+    // AppImage by its stable launcher path (process.env.APPIMAGE) — the
+    // per-launch /tmp/.mount_*/ path in process.execPath disappears as soon
+    // as the AppImage exits, so it can't go in the wrapper.
     const wrapperDir = join(homedir(), '.local', 'bin');
     const wrapperPath = join(wrapperDir, 'focusbear-native-host');
+    const hostJsPath = join(localNativeDir, 'host.js');
     await fs.mkdir(wrapperDir, { recursive: true });
-    await fs.writeFile(wrapperPath, `#!/bin/sh\nexec node "${join(localNativeDir, 'host.js')}" "$@"\n`);
+    const wrapperContent = process.env.APPIMAGE
+      ? `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${process.env.APPIMAGE}" "${hostJsPath}" "$@"\n`
+      : `#!/bin/sh\nexec node "${hostJsPath}" "$@"\n`;
+    await fs.writeFile(wrapperPath, wrapperContent);
     await fs.chmod(wrapperPath, 0o755);
 
     // Write manifest to all known Firefox locations (regular + snap)
