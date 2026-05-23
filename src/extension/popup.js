@@ -12,6 +12,41 @@ function formatTime(timestamp) {
   return date.toLocaleTimeString();
 }
 
+function formatTimeRemaining(expiresAt) {
+  const ms = expiresAt - Date.now();
+  if (ms <= 0) return 'expired';
+  const mins = Math.ceil(ms / 60000);
+  return mins === 1 ? '1 min left' : `${mins} mins left`;
+}
+
+function renderWhitelist(entries) {
+  const container = document.getElementById('whitelist');
+  if (!container) return;
+
+  const active = entries.filter(e => e.expiresAt > Date.now());
+  if (active.length === 0) {
+    container.innerHTML = '<div class="empty">No temporary exemptions</div>';
+    return;
+  }
+
+  container.innerHTML = active.map(entry => `
+    <div class="whitelist-item">
+      <div class="whitelist-item-info">
+        <div class="whitelist-item-pattern">${escapeHtml(entry.pattern)}</div>
+        <div class="whitelist-item-meta">${entry.type} · ${formatTimeRemaining(entry.expiresAt)}</div>
+      </div>
+      <button class="whitelist-remove" data-pattern="${escapeHtml(entry.pattern)}" title="Remove">✕</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.whitelist-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      browser.runtime.sendMessage({ type: 'REMOVE_WHITELIST', pattern: btn.dataset.pattern })
+        .then(() => updateUI());
+    });
+  });
+}
+
 function updateUI() {
   // Get status from background script
   browser.runtime.sendMessage({ type: 'GET_STATUS' }).then(response => {
@@ -65,6 +100,10 @@ function updateUI() {
 
     log(`Displayed ${blocklist.length} patterns`);
   });
+
+  browser.runtime.sendMessage({ type: 'GET_WHITELIST' }).then(response => {
+    renderWhitelist(response.whitelist || []);
+  });
 }
 
 function escapeHtml(text) {
@@ -90,8 +129,8 @@ document.getElementById('refresh').addEventListener('click', () => {
 
 // Listen for storage changes
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.blocklist) {
-    log('Blocklist changed in storage, updating UI');
+  if (area === 'local' && (changes.blocklist || changes.whitelist)) {
+    log('Storage changed, updating UI');
     updateUI();
   }
 });

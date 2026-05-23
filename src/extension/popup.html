@@ -186,6 +186,52 @@
       color: #666;
       margin-top: 8px;
     }
+
+    .whitelist-item {
+      padding: 6px 8px;
+      margin: 3px 0;
+      background: #fff8e6;
+      border-radius: 3px;
+      border-left: 3px solid #ed8936;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .whitelist-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .whitelist-item-pattern {
+      font-family: monospace;
+      word-break: break-all;
+      color: #2d3748;
+    }
+
+    .whitelist-item-meta {
+      font-size: 11px;
+      color: #a0522d;
+      margin-top: 2px;
+    }
+
+    .whitelist-remove {
+      background: none;
+      border: none;
+      color: #c05621;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      width: auto;
+    }
+
+    .whitelist-remove:hover {
+      background: #fed7aa;
+    }
   </style>
 </head>
 <body>
@@ -213,6 +259,13 @@
   <div class="section">
     <div id="blocklist" class="blocklist">
       <div class="empty">No block patterns loaded</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Temporary Whitelist</div>
+    <div id="whitelist" class="blocklist">
+      <div class="empty">No temporary exemptions</div>
     </div>
   </div>
 

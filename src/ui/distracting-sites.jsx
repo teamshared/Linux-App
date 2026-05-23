@@ -16,9 +16,7 @@ const Distracting_sites_page = function() {
   //print all urls
   useEffect(function() {
     if (!isLoading && urlArray) {
-      const urlString = urlArray.join('\n');
-      window.api?.printList(urlString);
-      window.api?.exportList(urlString);
+      window.api?.printList(urlArray.join('\n'));
     }
   }, [urlArray, isLoading]);
 

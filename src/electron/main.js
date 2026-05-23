@@ -3,7 +3,7 @@ import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { app, BrowserWindow, ipcMain, session } from "electron";
+import { app, BrowserWindow, ipcMain, session, dialog } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn, execSync } from 'child_process';
@@ -22,6 +22,35 @@ dotenv.config();
 const SOCKET_PATH = '/tmp/focusbear.sock';
 let socketServer = null;
 let nativeHostClients = [];
+let currentBlocklist = [];
+let currentWhitelist = [];
+
+const socketPingTimes = new Map(); // socket → lastPingAt ms
+let extensionWarningTimer = null;
+let extensionWarningActive = false;
+
+function getWhitelistPath() {
+  return join(app.getPath('userData'), 'whitelist.json');
+}
+
+async function loadWhitelistFromDisk() {
+  try {
+    const data = await fs.readFile(getWhitelistPath(), 'utf8');
+    const entries = JSON.parse(data);
+    currentWhitelist = entries.filter(e => e.expiresAt > Date.now());
+    console.log(`[Whitelist] Loaded ${currentWhitelist.length} active entries from disk`);
+  } catch (error) {
+    currentWhitelist = [];
+  }
+}
+
+async function saveWhitelistToDisk(entries) {
+  try {
+    await fs.writeFile(getWhitelistPath(), JSON.stringify(entries, null, 2));
+  } catch (error) {
+    console.error('[Whitelist] Failed to save:', error.message);
+  }
+}
 
 async function startSocketServer() {
   // Remove existing socket file if it exists
@@ -34,9 +63,23 @@ async function startSocketServer() {
   socketServer = createServer((socket) => {
     console.log('[Socket] Native host connected');
     nativeHostClients.push(socket);
+    socketPingTimes.set(socket, Date.now());
 
-    // Store the current blocklist for this client
-    socket.currentBlocklist = [];
+    // Push current blocklist immediately so new connections don't wait for a GET_BLOCKLIST
+    if (currentBlocklist.length > 0) {
+      socket.write(JSON.stringify({
+        type: 'BLOCKLIST_UPDATE',
+        data: currentBlocklist,
+        timestamp: Date.now()
+      }) + '\n');
+    }
+
+    // Push whitelist so extension can restore it after reinstall
+    socket.write(JSON.stringify({
+      type: 'WHITELIST_UPDATE',
+      data: currentWhitelist.filter(e => e.expiresAt > Date.now()),
+      timestamp: Date.now()
+    }) + '\n');
 
     socket.on('data', (data) => {
       const lines = data.toString().split('\n').filter(line => line.trim());
@@ -46,14 +89,28 @@ async function startSocketServer() {
           const message = JSON.parse(line);
           console.log('[Socket] Received from native host:', message.type);
 
-          if (message.type === 'GET_BLOCKLIST') {
-            // Send the current in-memory blocklist
-            console.log(`[Socket] Sending blocklist: ${socket.currentBlocklist.length} entries`);
+          if (message.type === 'PING') {
+            socketPingTimes.set(socket, Date.now());
+            cancelExtensionWarning();
+          } else if (message.type === 'GET_BLOCKLIST') {
+            console.log(`[Socket] Sending blocklist: ${currentBlocklist.length} entries`);
             socket.write(JSON.stringify({
               type: 'BLOCKLIST_RESPONSE',
-              data: socket.currentBlocklist,
+              data: currentBlocklist,
               timestamp: Date.now()
             }) + '\n');
+          } else if (message.type === 'GET_WHITELIST') {
+            const active = currentWhitelist.filter(e => e.expiresAt > Date.now());
+            console.log(`[Socket] Sending whitelist: ${active.length} entries`);
+            socket.write(JSON.stringify({
+              type: 'WHITELIST_RESPONSE',
+              data: active,
+              timestamp: Date.now()
+            }) + '\n');
+          } else if (message.type === 'WHITELIST_UPDATE') {
+            currentWhitelist = message.data.filter(e => e.expiresAt > Date.now());
+            console.log(`[Socket] Whitelist updated: ${currentWhitelist.length} entries`);
+            saveWhitelistToDisk(currentWhitelist);
           }
         } catch (error) {
           console.error('[Socket] Error parsing message:', error);
@@ -64,6 +121,14 @@ async function startSocketServer() {
     socket.on('close', () => {
       console.log('[Socket] Native host disconnected');
       nativeHostClients = nativeHostClients.filter(s => s !== socket);
+      socketPingTimes.delete(socket);
+      // Socket closed but browser still running → native host/extension crashed
+      setTimeout(() => {
+        if (isBrowserRunning() && !extensionWarningActive) {
+          console.log('[PingMonitor] Socket closed, browser still running — showing warning');
+          showExtensionWarning();
+        }
+      }, 2000);
     });
 
     socket.on('error', (error) => {
@@ -82,6 +147,8 @@ async function startSocketServer() {
 
 // Broadcast blocklist update to all connected native hosts
 function broadcastBlocklistUpdate(blocklist) {
+  currentBlocklist = blocklist;
+
   const message = JSON.stringify({
     type: 'BLOCKLIST_UPDATE',
     data: blocklist,
@@ -92,13 +159,80 @@ function broadcastBlocklistUpdate(blocklist) {
 
   nativeHostClients.forEach(client => {
     try {
-      // Update the stored blocklist for each client
-      client.currentBlocklist = blocklist;
       client.write(message);
     } catch (error) {
       console.error('[Socket] Error broadcasting to client:', error);
     }
   });
+}
+
+function isBrowserRunning() {
+  try {
+    execSync(
+      'pgrep -x firefox || pgrep -x firefox-esr || pgrep -x chromium || pgrep -x chromium-browser || pgrep -x google-chrome || pgrep -x google-chrome-stable',
+      { stdio: 'pipe' }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function killBrowsers() {
+  console.log('[PingMonitor] Killing browsers');
+  exec('pkill -x firefox; pkill -x firefox-esr; pkill -x chromium; pkill -x chromium-browser; pkill -x google-chrome; pkill -x google-chrome-stable', () => {});
+}
+
+function cancelExtensionWarning() {
+  if (extensionWarningTimer) {
+    clearTimeout(extensionWarningTimer);
+    extensionWarningTimer = null;
+  }
+  extensionWarningActive = false;
+}
+
+function showExtensionWarning() {
+  if (extensionWarningActive) return;
+  extensionWarningActive = true;
+  console.log('[PingMonitor] Showing extension disconnected warning');
+
+  extensionWarningTimer = setTimeout(() => {
+    extensionWarningActive = false;
+    extensionWarningTimer = null;
+    killBrowsers();
+  }, 30000);
+
+  dialog.showMessageBox({
+    type: 'warning',
+    title: 'Focus Bear — Extension Disconnected',
+    message: 'Browser extension stopped responding',
+    detail: 'The Focus Bear browser extension is not responding. Your browser will be closed in 30 seconds to maintain your focus session.',
+    buttons: ['Close Browser Now'],
+    defaultId: 0,
+  }).then(() => {
+    if (extensionWarningTimer) {
+      clearTimeout(extensionWarningTimer);
+      extensionWarningTimer = null;
+    }
+    extensionWarningActive = false;
+    killBrowsers();
+  });
+}
+
+function startPingMonitor() {
+  setInterval(() => {
+    if (extensionWarningActive) return;
+    const now = Date.now();
+    for (const [_socket, lastPing] of socketPingTimes) {
+      if (now - lastPing > 15000) {
+        console.log('[PingMonitor] No ping for 15s on socket, checking browser');
+        if (isBrowserRunning()) {
+          showExtensionWarning();
+        }
+        break;
+      }
+    }
+  }, 5000);
 }
 
 // Install native messaging host on startup — runs in-process, no subprocess needed.
@@ -218,8 +352,14 @@ app.on("ready", function(){
     // Set up broadcast function for Blocker.js
     setBroadcastFunction(broadcastBlocklistUpdate);
 
+    // Load persisted whitelist before socket server accepts connections
+    loadWhitelistFromDisk();
+
     // Install native messaging host
     installNativeMessaging();
+
+    // Monitor extension liveness via pings
+    startPingMonitor();
 
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
@@ -345,6 +485,7 @@ ipcMain.on('focus-session-true', function(event) {
     isFocusActive = true;
     focusState.setActive(true);
     broadcastFocusState(true);
+    broadcastBlocklistUpdate(currentBlocklist);
     console.log('Focus session started (native messaging extension)');
 
     try {
