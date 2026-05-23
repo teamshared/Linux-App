@@ -3,7 +3,7 @@ import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { app, BrowserWindow, ipcMain, session, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn, execSync } from 'child_process';
@@ -24,6 +24,10 @@ let socketServer = null;
 let nativeHostClients = [];
 let currentBlocklist = [];
 let currentWhitelist = [];
+let warningWindow = null;
+const connectedBrowsers = new Set();   // browser id strings currently connected
+const socketBrowsers = new Map();      // socket → browser id
+let pingMonitorActive = false;
 
 const socketPingTimes = new Map(); // socket → lastPingAt ms
 let extensionWarningTimer = null;
@@ -89,8 +93,16 @@ async function startSocketServer() {
           const message = JSON.parse(line);
           console.log('[Socket] Received from native host:', message.type);
 
+          // Any traffic from native host means extension is alive
+          socketPingTimes.set(socket, Date.now());
+
           if (message.type === 'PING') {
-            socketPingTimes.set(socket, Date.now());
+            const browser = message.browser || 'unknown';
+            socketBrowsers.set(socket, browser);
+            if (!connectedBrowsers.has(browser)) {
+              connectedBrowsers.add(browser);
+              if (mainWindow) mainWindow.webContents.send('extension-connected', browser);
+            }
             cancelExtensionWarning();
           } else if (message.type === 'GET_BLOCKLIST') {
             console.log(`[Socket] Sending blocklist: ${currentBlocklist.length} entries`);
@@ -122,13 +134,20 @@ async function startSocketServer() {
       console.log('[Socket] Native host disconnected');
       nativeHostClients = nativeHostClients.filter(s => s !== socket);
       socketPingTimes.delete(socket);
+      const browser = socketBrowsers.get(socket);
+      socketBrowsers.delete(socket);
+      if (browser && ![...socketBrowsers.values()].includes(browser)) {
+        connectedBrowsers.delete(browser);
+      }
       // Socket closed but browser still running → native host/extension crashed
-      setTimeout(() => {
-        if (isBrowserRunning() && !extensionWarningActive) {
-          console.log('[PingMonitor] Socket closed, browser still running — showing warning');
-          showExtensionWarning();
-        }
-      }, 2000);
+      if (pingMonitorActive) {
+        setTimeout(() => {
+          if (isBrowserRunning() && !extensionWarningActive) {
+            console.log('[PingMonitor] Socket closed, browser still running — showing warning');
+            showExtensionWarning();
+          }
+        }, 2000);
+      }
     });
 
     socket.on('error', (error) => {
@@ -168,19 +187,22 @@ function broadcastBlocklistUpdate(blocklist) {
 
 function isBrowserRunning() {
   try {
-    execSync(
-      'pgrep -x firefox || pgrep -x firefox-esr || pgrep -x chromium || pgrep -x chromium-browser || pgrep -x google-chrome || pgrep -x google-chrome-stable',
-      { stdio: 'pipe' }
-    );
+    execSync('pgrep -x firefox || pgrep -x firefox-esr', { stdio: 'pipe' });
     return true;
   } catch {
-    return false;
+    // Fallback: command-line match handles snap/flatpak/firefox-bin variants
+    try {
+      execSync('pgrep -f firefox', { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
 function killBrowsers() {
-  console.log('[PingMonitor] Killing browsers');
-  exec('pkill -x firefox; pkill -x firefox-esr; pkill -x chromium; pkill -x chromium-browser; pkill -x google-chrome; pkill -x google-chrome-stable', () => {});
+  console.log('[PingMonitor] Killing Firefox');
+  exec('pkill -x firefox; pkill -x firefox-esr; pkill -f firefox', () => {});
 }
 
 function cancelExtensionWarning() {
@@ -189,6 +211,10 @@ function cancelExtensionWarning() {
     extensionWarningTimer = null;
   }
   extensionWarningActive = false;
+  if (warningWindow) {
+    warningWindow.close();
+    warningWindow = null;
+  }
 }
 
 function showExtensionWarning() {
@@ -199,27 +225,29 @@ function showExtensionWarning() {
   extensionWarningTimer = setTimeout(() => {
     extensionWarningActive = false;
     extensionWarningTimer = null;
+    if (warningWindow) { warningWindow.close(); warningWindow = null; }
     killBrowsers();
   }, 30000);
 
-  dialog.showMessageBox({
-    type: 'warning',
-    title: 'Focus Bear — Extension Disconnected',
-    message: 'Browser extension stopped responding',
-    detail: 'The Focus Bear browser extension is not responding. Your browser will be closed in 30 seconds to maintain your focus session.',
-    buttons: ['Close Browser Now'],
-    defaultId: 0,
-  }).then(() => {
-    if (extensionWarningTimer) {
-      clearTimeout(extensionWarningTimer);
-      extensionWarningTimer = null;
-    }
-    extensionWarningActive = false;
-    killBrowsers();
+  warningWindow = new BrowserWindow({
+    width: 600,
+    height: 400,
+    resizable: false,
+    alwaysOnTop: true,
+    title: 'Focus Bear — Extension Warning',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
   });
+  warningWindow.loadFile(join(__dirname, 'extension-warning.html'));
+  warningWindow.on('closed', () => { warningWindow = null; });
 }
 
 function startPingMonitor() {
+  if (pingMonitorActive) return;
+  pingMonitorActive = true;
   setInterval(() => {
     if (extensionWarningActive) return;
     const now = Date.now();
@@ -358,8 +386,11 @@ app.on("ready", function(){
     // Install native messaging host
     installNativeMessaging();
 
-    // Monitor extension liveness via pings
-    startPingMonitor();
+    // Only monitor extension liveness after setup is complete.
+    // Checked from disk so the decision is made before the renderer loads.
+    fs.readFile(getSettingsPath(), 'utf8')
+      .then(data => { if (JSON.parse(data).setupComplete) startPingMonitor(); })
+      .catch(() => {}); // first run — no settings file yet, skip monitor
 
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
@@ -468,6 +499,24 @@ app.on("ready", function(){
             mainWindow.focus();
         }
     });
+});
+
+ipcMain.handle('get-extension-connected', () => [...connectedBrowsers]);
+
+ipcMain.handle('get-local-settings', async () => {
+  try {
+    const data = await fs.readFile(getSettingsPath(), 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.on('setup-complete', () => { startPingMonitor(); });
+
+ipcMain.on('extension-warning-close-browser', () => {
+  cancelExtensionWarning();
+  killBrowsers();
 });
 
 ipcMain.on('quit-channel', function() {
