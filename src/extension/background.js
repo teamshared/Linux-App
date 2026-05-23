@@ -4,8 +4,52 @@
 
 let port = null;
 let blocklist = [];
+let whitelist = []; // { pattern, type: 'domain'|'exact', expiresAt }
 let isConnected = false;
 let isConnectedToApp = false;
+
+const WHITELIST_DURATION_MS = 30 * 60 * 1000;
+
+// Load persisted whitelist on startup, discard expired entries
+browser.storage.local.get(['whitelist']).then(result => {
+  whitelist = (result.whitelist || []).filter(e => e.expiresAt > Date.now());
+  browser.storage.local.set({ whitelist });
+});
+
+function pruneWhitelist() {
+  const before = whitelist.length;
+  whitelist = whitelist.filter(e => e.expiresAt > Date.now());
+  if (whitelist.length !== before) {
+    browser.storage.local.set({ whitelist });
+  }
+  return whitelist;
+}
+
+const stripProtocol = u => u.replace(/^https?:\/\//, '');
+
+function isWhitelisted(url) {
+  pruneWhitelist();
+  for (const entry of whitelist) {
+    if (entry.type === 'exact' && stripProtocol(url) === stripProtocol(entry.pattern)) return true;
+    if (entry.type === 'domain') {
+      try {
+        const hostname = new URL(url).hostname;
+        if (hostname === entry.pattern || hostname.endsWith('.' + entry.pattern)) return true;
+      } catch (e) { /* invalid url */ }
+    }
+  }
+  return false;
+}
+
+function notifyWhitelistUpdate() {
+  if (port && isConnected) {
+    try {
+      port.postMessage({ type: 'WHITELIST_UPDATE', data: whitelist });
+    } catch (e) {
+      log('Failed to notify host of whitelist update: ' + e.message);
+    }
+  }
+}
 
 function log(message) {
   console.log('[Focus Bear Extension]', message);
@@ -25,11 +69,18 @@ function connectToNativeHost() {
         case 'BLOCKLIST_UPDATE':
           blocklist = message.data || [];
           log(`Updated blocklist: ${blocklist.length} entries`);
-          // Store in extension storage for popup to access
-          browser.storage.local.set({ 
+          browser.storage.local.set({
             blocklist: blocklist,
-            lastUpdate: message.timestamp 
+            lastUpdate: message.timestamp
           });
+          break;
+
+        case 'WHITELIST_RESPONSE':
+        case 'WHITELIST_UPDATE':
+          // Incoming from Electron (authoritative source) — replace local state
+          whitelist = (message.data || []).filter(e => e.expiresAt > Date.now());
+          log(`Received whitelist from app: ${whitelist.length} entries`);
+          browser.storage.local.set({ whitelist });
           break;
           
         case 'PONG':
@@ -37,6 +88,8 @@ function connectToNativeHost() {
           isConnected = true;
           isConnectedToApp = message.connectedToApp || false;
           log(`Native host connected to Electron app: ${isConnectedToApp}`);
+          // Request authoritative whitelist from Electron (covers reinstall)
+          port.postMessage({ type: 'GET_WHITELIST' });
           break;
           
         case 'ERROR':
@@ -88,7 +141,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({
       connected: isConnected,
       connectedToApp: isConnectedToApp,
-      blocklistSize: blocklist.length
+      blocklistSize: blocklist.length,
+      whitelistSize: pruneWhitelist().length
     });
   } else if (message.type === 'REFRESH_BLOCKLIST') {
     if (port && isConnected) {
@@ -97,6 +151,27 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else {
       sendResponse({ success: false, error: 'Not connected to native host' });
     }
+  } else if (message.type === 'GET_WHITELIST') {
+    sendResponse({ whitelist: pruneWhitelist() });
+  } else if (message.type === 'ADD_WHITELIST') {
+    const durationMs = message.durationMs || WHITELIST_DURATION_MS;
+    const entry = {
+      pattern: message.pattern,
+      type: message.patternType,
+      expiresAt: Date.now() + durationMs
+    };
+    // Replace any existing entry for same pattern
+    whitelist = pruneWhitelist().filter(e => e.pattern !== message.pattern);
+    whitelist.push(entry);
+    browser.storage.local.set({ whitelist });
+    notifyWhitelistUpdate();
+    log(`Whitelist added: ${message.patternType}:${message.pattern}`);
+    sendResponse({ success: true });
+  } else if (message.type === 'REMOVE_WHITELIST') {
+    whitelist = pruneWhitelist().filter(e => e.pattern !== message.pattern);
+    browser.storage.local.set({ whitelist });
+    notifyWhitelistUpdate();
+    sendResponse({ success: true });
   }
   return true; // Keep channel open for async response
 });
@@ -105,9 +180,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
     const url = details.url;
-    
+
     // Don't block our own extension pages
     if (url.startsWith(browser.runtime.getURL(''))) {
+      return { cancel: false };
+    }
+
+    // Whitelisted — allow through
+    if (isWhitelisted(url)) {
+      log(`Whitelist pass: ${url}`);
       return { cancel: false };
     }
     
@@ -186,11 +267,37 @@ log('Background script loaded');
 // Periodically check connection status
 setInterval(() => {
   if (port && isConnected) {
-    // Send a ping to verify connection and update app status
     try {
       port.postMessage({ type: 'PING' });
     } catch (error) {
       log(`Error sending periodic ping: ${error.message}`);
     }
   }
-}, 10000); // Every 10 seconds
+}, 10000);
+
+// Prune expired whitelist entries, sync to Electron, reload active tab if it matched
+setInterval(() => {
+  const expired = whitelist.filter(e => e.expiresAt <= Date.now());
+  pruneWhitelist();
+  if (expired.length === 0) return;
+
+  log(`Pruned ${expired.length} expired whitelist entries`);
+  notifyWhitelistUpdate();
+
+  browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+    const tab = tabs[0];
+    if (!tab || !tab.url) return;
+    const matched = expired.some(entry => {
+      try {
+        const hostname = new URL(tab.url).hostname;
+        return entry.type === 'exact'
+          ? stripProtocol(tab.url) === stripProtocol(entry.pattern)
+          : hostname === entry.pattern || hostname.endsWith('.' + entry.pattern);
+      } catch (e) { return false; }
+    });
+    if (matched) {
+      log(`Active tab ${tab.url} matched expired whitelist entry — reloading`);
+      browser.tabs.reload(tab.id);
+    }
+  });
+}, 60 * 1000);

@@ -92,10 +92,23 @@ function connectToApp() {
         log(`Received from app: ${JSON.stringify(message)}`);
 
         if (message.type === 'BLOCKLIST_UPDATE') {
-          // Forward to extension
           log(`Forwarding blocklist update to extension (${message.data.length} entries)`);
           sendMessage({
             type: 'BLOCKLIST_UPDATE',
+            data: message.data,
+            timestamp: Date.now()
+          });
+        } else if (message.type === 'WHITELIST_UPDATE') {
+          log(`Forwarding whitelist update to extension (${message.data.length} entries)`);
+          sendMessage({
+            type: 'WHITELIST_UPDATE',
+            data: message.data,
+            timestamp: Date.now()
+          });
+        } else if (message.type === 'WHITELIST_RESPONSE') {
+          log(`Forwarding whitelist response to extension (${message.data.length} entries)`);
+          sendMessage({
+            type: 'WHITELIST_RESPONSE',
             data: message.data,
             timestamp: Date.now()
           });
@@ -202,6 +215,32 @@ readMessage((message) => {
         timestamp: Date.now(),
         connectedToApp: isConnectedToApp
       });
+      if (isConnectedToApp && appSocket) {
+        appSocket.write(JSON.stringify({ type: 'PING', timestamp: Date.now() }) + '\n');
+      }
+      break;
+
+    case 'GET_WHITELIST':
+      log('Forwarding GET_WHITELIST to app');
+      if (isConnectedToApp && appSocket) {
+        appSocket.write(JSON.stringify({ type: 'GET_WHITELIST' }) + '\n');
+      } else {
+        log('Not connected to app, sending empty whitelist response');
+        sendMessage({ type: 'WHITELIST_RESPONSE', data: [] });
+      }
+      break;
+
+    case 'WHITELIST_UPDATE':
+      log(`Forwarding whitelist update to app (${message.data.length} entries)`);
+      if (isConnectedToApp && appSocket) {
+        appSocket.write(JSON.stringify({
+          type: 'WHITELIST_UPDATE',
+          data: message.data,
+          timestamp: Date.now()
+        }) + '\n');
+      } else {
+        log('Not connected to app, whitelist update not forwarded');
+      }
       break;
 
     default:
