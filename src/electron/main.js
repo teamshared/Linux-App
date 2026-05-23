@@ -6,7 +6,7 @@ const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
-import { exec, execFile, spawn, execSync } from 'child_process';
+import { exec, execFile, spawn, execSync, spawnSync } from 'child_process';
 import "./Blocker.js"
 import { setBroadcastFunction } from './Blocker.js';
 import { focusState } from './focusState.js';
@@ -139,14 +139,14 @@ async function startSocketServer() {
       if (browser && ![...socketBrowsers.values()].includes(browser)) {
         connectedBrowsers.delete(browser);
       }
-      // Socket closed but browser still running → native host/extension crashed
+      // Socket closed but browser still running → extension crashed/disabled (not a normal browser close)
       if (pingMonitorActive) {
         setTimeout(() => {
-          if (isBrowserRunning() && !extensionWarningActive) {
+          if (nativeHostClients.length === 0 && isBrowserRunning() && !extensionWarningActive) {
             console.log('[PingMonitor] Socket closed, browser still running — showing warning');
             showExtensionWarning();
           }
-        }, 2000);
+        }, 5000);
       }
     });
 
@@ -186,23 +186,24 @@ function broadcastBlocklistUpdate(blocklist) {
 }
 
 function isBrowserRunning() {
-  try {
-    execSync('pgrep -x firefox || pgrep -x firefox-esr', { stdio: 'pipe' });
-    return true;
-  } catch {
-    // Fallback: command-line match handles snap/flatpak/firefox-bin variants
-    try {
-      execSync('pgrep -f firefox', { stdio: 'pipe' });
-      return true;
-    } catch {
-      return false;
-    }
-  }
+  // spawnSync = no shell spawned, so pgrep -f won't match a shell cmdline containing "firefox".
+  // pgrep excludes its own PID, so no self-match either.
+  const result = spawnSync('pgrep', ['-f', 'firefox'], { stdio: 'pipe' });
+  return result.status === 0;
 }
 
 function killBrowsers() {
   console.log('[PingMonitor] Killing Firefox');
-  exec('pkill -x firefox; pkill -x firefox-esr; pkill -f firefox', () => {});
+  spawnSync('pkill', ['-x', 'firefox'], { stdio: 'pipe' });
+  spawnSync('pkill', ['-x', 'firefox-esr'], { stdio: 'pipe' });
+}
+
+function destroyWarningWindow() {
+  if (warningWindow) {
+    const win = warningWindow;
+    warningWindow = null;
+    win.destroy();
+  }
 }
 
 function cancelExtensionWarning() {
@@ -211,10 +212,7 @@ function cancelExtensionWarning() {
     extensionWarningTimer = null;
   }
   extensionWarningActive = false;
-  if (warningWindow) {
-    warningWindow.close();
-    warningWindow = null;
-  }
+  destroyWarningWindow();
 }
 
 function showExtensionWarning() {
@@ -225,7 +223,7 @@ function showExtensionWarning() {
   extensionWarningTimer = setTimeout(() => {
     extensionWarningActive = false;
     extensionWarningTimer = null;
-    if (warningWindow) { warningWindow.close(); warningWindow = null; }
+    destroyWarningWindow();
     killBrowsers();
   }, 30000);
 
@@ -242,12 +240,14 @@ function showExtensionWarning() {
     },
   });
   warningWindow.loadFile(join(__dirname, 'extension-warning.html'));
-  warningWindow.on('closed', () => { warningWindow = null; });
+  warningWindow.on('closed', () => { warningWindow = null; }); // handles manual X click
 }
 
 function startPingMonitor() {
   if (pingMonitorActive) return;
   pingMonitorActive = true;
+
+  // Detect extension going silent on an existing connection
   setInterval(() => {
     if (extensionWarningActive) return;
     const now = Date.now();
@@ -261,6 +261,19 @@ function startPingMonitor() {
       }
     }
   }, 5000);
+
+  // Detect browser running without extension — checked on startup and every 30s after
+  const browserScan = () => {
+    if (extensionWarningActive) return;
+    if (nativeHostClients.length > 0) return;
+    if (isBrowserRunning()) {
+      console.log('[BrowserScan] Browser running with no extension socket — showing warning');
+      showExtensionWarning();
+    }
+  };
+
+  setTimeout(browserScan, 20000); // initial check — 20s grace for extension to connect on startup
+  setInterval(browserScan, 30000);
 }
 
 // Install native messaging host on startup — runs in-process, no subprocess needed.
