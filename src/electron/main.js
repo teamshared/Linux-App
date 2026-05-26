@@ -15,13 +15,6 @@ import { app, BrowserWindow, ipcMain, session } from "electron";
 if (process.env.APPIMAGE) {
     app.commandLine.appendSwitch('no-sandbox');
 }
-
-// Disable GPU rendering in headless environments (prevents crashes)
-if (isHeadless) {
-    app.commandLine.appendSwitch('disable-gpu');
-    app.commandLine.appendSwitch('disable-gpu-compositing');
-    app.commandLine.appendSwitch('ozone-platform', 'headless');
-}
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn, execSync } from 'child_process';
@@ -36,19 +29,6 @@ import { createServer } from 'net';
 import { unlink } from 'fs/promises';
 
 dotenv.config();
-
-// Detect headless environment (no X11/Wayland display server)
-const isHeadless = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
-if (isHeadless) {
-    console.log('[Main Process] Running in headless mode — GUI features disabled');
-    // Suppress D-Bus warnings in headless mode
-    process.env.DBUS_SYSTEM_BUS_ADDRESS = 'unix:path=/dev/null';
-    process.env.DBUS_SESSION_BUS_ADDRESS = 'unix:path=/dev/null';
-    // Disable GPU acceleration (no display to render to)
-    process.env.ELECTRON_OZONE_PLATFORM_HINT = 'headless';
-    // Suppress Chromium errors
-    process.env.QT_QPA_PLATFORM = 'offscreen';
-}
 
 // Unix domain socket server for native messaging
 const SOCKET_PATH = '/tmp/focusbear.sock';
@@ -272,26 +252,18 @@ app.on("ready", function(){
     // icon is still created, and clicking it opens the window normally.
     const startHidden = process.argv.includes('--hidden');
 
-    const windowConfig = {
+    mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
         height: 850,
         width: 1000,
-        show: !startHidden && !isHeadless,  // Don't show in headless mode
+        show: !startHidden,
         webviewTag: true,
         webPreferences: {
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
             webSecurity: false,
         },
-        devTools: !isHeadless,  // Disable devTools in headless mode
-    };
-
-    // Use offscreen rendering in headless mode
-    if (isHeadless) {
-        windowConfig.offscreen = true;
-        console.log('[Main Process] Using offscreen rendering for headless mode');
-    }
-
-    mainWindow = new BrowserWindow(windowConfig);
+        devTools: true,
+    });
     tray = createTray(mainWindow)
 
     const isDev = !app.isPackaged;
