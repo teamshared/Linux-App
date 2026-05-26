@@ -7,11 +7,15 @@ class SimpleUrlGrabber {
   constructor() {
     this.supportedBrowsers = [
       'firefox',
-      'chrome', 
+      'chrome',
       'chromium',
       'brave',
       'google-chrome'
     ];
+    this.headlessMode = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+    if (this.headlessMode) {
+      console.log('[URL Grabber] Running in headless mode — URL monitoring disabled');
+    }
   }
 
   async getBrowserHistory() {
@@ -429,17 +433,25 @@ class SimpleUrlGrabber {
   }
 
   startRealtimeMonitoring(callback, interval = 500) {
-  let lastUrl = null;
-  let lastTitle = null;
-  console.log('Starting enhanced real-time URL monitoring...');
+    // Skip monitoring entirely in headless mode (no display server)
+    if (this.headlessMode) {
+      console.log('[URL Grabber] Headless mode detected — URL monitoring is a no-op');
+      return () => {
+        console.log('[URL Grabber] Stopping monitoring (was disabled in headless mode)');
+      };
+    }
 
-  const checkInterval = setInterval(async () => {
+    let lastUrl = null;
+    let lastTitle = null;
+    console.log('Starting enhanced real-time URL monitoring...');
+
+    const checkInterval = setInterval(async () => {
       try {
         const result = await this.getCurrentUrl();
         if (result) {
           const urlChanged = result.url !== lastUrl;
           const titleChanged = result.title !== lastTitle;
-          
+
           if (urlChanged || titleChanged) {
             const changeData = {
               ...result,
@@ -450,10 +462,9 @@ class SimpleUrlGrabber {
               previousUrl: lastUrl,
               previousTitle: lastTitle
             };
-            
+
             lastUrl = result.url;
             lastTitle = result.title;
-          
 
             callback(changeData);
           }
