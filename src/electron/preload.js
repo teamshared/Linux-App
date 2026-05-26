@@ -145,6 +145,25 @@ const API = {
 
     cleanupAppData: function() {
         return ipcRenderer.invoke('cleanup-app-data');
+    },
+
+    // App update notifications
+    checkForUpdates: function() {
+        return ipcRenderer.invoke('check-for-updates');
+    },
+
+    getLastUpdateStatus: function() {
+        return ipcRenderer.invoke('get-last-update-status');
+    },
+
+    onUpdateStatus: function(callback) {
+        const handler = function(event, status) { callback(status); };
+        ipcRenderer.on('update-status', handler);
+        return () => ipcRenderer.removeListener('update-status', handler);
+    },
+
+    openUpdateDownload: function(url) {
+        return ipcRenderer.send('open-update-download', url);
     }
 
 }

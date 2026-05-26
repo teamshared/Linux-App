@@ -20,6 +20,7 @@ import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resize
 import { exec, execFile, spawn, execSync } from 'child_process';
 import "./Blocker.js"
 import { setBroadcastFunction } from './Blocker.js';
+import { startUpdateChecker, stopUpdateChecker, checkForUpdates, getLastResult, openDownloadUrl } from './updateChecker.js';
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
 import dotenv from 'dotenv';
@@ -242,6 +243,9 @@ app.on("ready", function(){
 
     // Install native messaging host
     installNativeMessaging();
+
+    // Poll GitHub releases for newer versions and push status to the renderer.
+    startUpdateChecker(broadcastUpdateStatus);
 
     // --hidden: skip showing the main window at startup. Used by the systemd
     // user service so logging in doesn't flash the window onscreen — the tray
@@ -489,6 +493,7 @@ app.on('window-all-closed', function() {
 app.on('before-quit', function() {
     stopMonitoring()
     stopMitmproxyBlocker();
+    stopUpdateChecker();
 
     // Close socket server
     if (socketServer) {
@@ -499,6 +504,25 @@ app.on('before-quit', function() {
 
 app.on('will-quit', function() {
     exitflag = false;
+});
+
+function broadcastUpdateStatus(status) {
+    if (!status) return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-status', status);
+    }
+}
+
+ipcMain.handle('check-for-updates', async () => {
+    const result = await checkForUpdates({ silent: false });
+    broadcastUpdateStatus(result);
+    return result;
+});
+
+ipcMain.handle('get-last-update-status', async () => getLastResult());
+
+ipcMain.on('open-update-download', (event, url) => {
+    openDownloadUrl(url);
 });
 
 // Focus state broadcasting
