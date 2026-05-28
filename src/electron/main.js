@@ -5,15 +5,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
 
+// Detect if running from AppImage before any display-dependent code
+// process.env.APPIMAGE is set by the AppImage runtime
+const isAppImage = !!process.env.APPIMAGE;
+const isHeadless = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+
 // AppImage mounts itself read-only via squashfs+FUSE, which strips the SUID
 // bit from chrome-sandbox. On systems where Electron can't fall back to the
 // user-namespace sandbox (AppArmor unprivileged_userns profile, or
 // /proc/sys/kernel/unprivileged_userns_clone = 0) the app aborts at launch.
 // The .deb/.rpm install wrappers pass --no-sandbox for the same reason; the
-// AppImage has no install step, so we set the switch here. process.env.APPIMAGE
-// is set by the AppImage runtime and is the canonical "am I in an AppImage" probe.
-if (process.env.APPIMAGE) {
+// AppImage has no install step, so we set the switch here.
+if (isAppImage) {
     app.commandLine.appendSwitch('no-sandbox');
+    console.log('[Main Process] AppImage detected - sandbox disabled');
+}
+
+// In headless environments (no X11/Wayland), disable GPU and configure for headless rendering
+if (isHeadless) {
+    console.log('[Main Process] Headless environment detected - disabling GPU and GUI features');
+    app.commandLine.appendSwitch('disable-gpu');
+    app.commandLine.appendSwitch('disable-gpu-compositing');
+    // Use offscreen rendering instead of trying specific ozone platforms
+    app.commandLine.appendSwitch('type', 'renderer');
+    // Suppress D-Bus warnings
+    process.env.DBUS_SYSTEM_BUS_ADDRESS = 'unix:path=/dev/null';
+    process.env.DBUS_SESSION_BUS_ADDRESS = 'unix:path=/dev/null';
+    // Disable hardware acceleration
+    process.env.LIBGL_ALWAYS_INDIRECT = '1';
 }
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
@@ -148,9 +167,20 @@ async function installNativeMessaging() {
     const wrapperPath = join(wrapperDir, 'focusbear-native-host');
     const hostJsPath = join(localNativeDir, 'host.js');
     await fs.mkdir(wrapperDir, { recursive: true });
-    const wrapperContent = process.env.APPIMAGE
-      ? `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${process.env.APPIMAGE}" "${hostJsPath}" "$@"\n`
-      : `#!/bin/sh\nexec node "${hostJsPath}" "$@"\n`;
+
+    let wrapperContent;
+    if (isAppImage && process.env.APPIMAGE) {
+      // Use the stable APPIMAGE path for the native host wrapper
+      wrapperContent = `#!/bin/sh
+export ELECTRON_RUN_AS_NODE=1
+exec "${process.env.APPIMAGE}" "${hostJsPath}" "$@"
+`;
+    } else {
+      // Fall back to system node for non-AppImage installations
+      wrapperContent = `#!/bin/sh
+exec node "${hostJsPath}" "$@"
+`;
+    }
     await fs.writeFile(wrapperPath, wrapperContent);
     await fs.chmod(wrapperPath, 0o755);
 
@@ -252,18 +282,25 @@ app.on("ready", function(){
     // icon is still created, and clicking it opens the window normally.
     const startHidden = process.argv.includes('--hidden');
 
-    mainWindow = new BrowserWindow({
+    const windowConfig = {
         autoHideMenuBar: true,
         height: 850,
         width: 1000,
-        show: !startHidden,
+        show: !startHidden && !isHeadless,
         webviewTag: true,
         webPreferences: {
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
             webSecurity: false,
         },
-        devTools: true,
-    });
+        devTools: !isHeadless,
+    };
+
+    // Use offscreen rendering in headless mode
+    if (isHeadless) {
+        windowConfig.offscreen = true;
+    }
+
+    mainWindow = new BrowserWindow(windowConfig);
     tray = createTray(mainWindow)
 
     const isDev = !app.isPackaged;
