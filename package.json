@@ -91,11 +91,8 @@
     "rpm": {
       "depends": [
         "python3",
-        "nodejs",
-        "zip"
-      ],
-      "afterInstall": "build/rpm-postinst",
-      "afterRemove": "build/rpm-prerm"
+        "nodejs"
+      ]
     },
     "protocols": [
       {
@@ -136,10 +133,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "build/focusbear.service",
-        "to": "focusbear.service"
       }
     ],
     "directories": {

@@ -65,19 +65,3 @@ MANIFEST
 fi
 
 echo "Focus Bear installed. Extension files are at: ${APP_DIR}/resources/extension/"
-
-# ── systemd user service ─────────────────────────────────────────────────────
-# Installed system-wide at /usr/lib/systemd/user/ so any logged-in user can
-# opt in with `systemctl --user enable --now focusbear`. We deliberately do
-# NOT auto-enable: this script runs as root and cannot cleanly enable a
-# per-user unit on behalf of arbitrary users on the machine.
-SYSTEMD_UNIT_SRC="${APP_DIR}/resources/focusbear.service"
-SYSTEMD_UNIT_DEST="/usr/lib/systemd/user/focusbear.service"
-if [ -f "$SYSTEMD_UNIT_SRC" ]; then
-    mkdir -p /usr/lib/systemd/user
-    cp "$SYSTEMD_UNIT_SRC" "$SYSTEMD_UNIT_DEST"
-    chmod 644 "$SYSTEMD_UNIT_DEST"
-    echo "To run Focus Bear as a background service that restarts on crash:"
-    echo "  systemctl --user daemon-reload"
-    echo "  systemctl --user enable --now focusbear"
-fi
