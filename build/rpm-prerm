@@ -1,0 +1,14 @@
+#!/bin/bash
+# RPM %preun scriptlet for Focus Bear.
+# $1 = 0 on full uninstall, $1 = 1 on upgrade (old version's preun fires after
+# the new version's post). We must only delete the wrappers on full uninstall —
+# otherwise an upgrade would strip the files that the new %post just created.
+set -e
+
+if [ "$1" = "0" ]; then
+    rm -f /usr/bin/focusbear
+    rm -f /usr/local/bin/focusbear-native-host
+    rm -f /usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json
+    rm -f /usr/lib64/mozilla/native-messaging-hosts/com.focusbear.native_host.json
+    rm -f /usr/lib/systemd/user/focusbear.service
+fi
