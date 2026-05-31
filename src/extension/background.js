@@ -10,10 +10,19 @@ let isConnectedToApp = false;
 
 const WHITELIST_DURATION_MS = 30 * 60 * 1000;
 
-// Load persisted whitelist on startup, discard expired entries
-browser.storage.local.get(['whitelist']).then(result => {
+// Agreed-upon browser identifier sent in every PING so Electron knows which browser this is.
+// Add a new string here when adding support for a new browser.
+const BROWSER_ID = (() => {
+  if (typeof browser !== 'undefined' && browser.runtime?.getBrowserInfo) return 'firefox';
+  if (navigator.userAgent.includes('Chrome')) return 'chrome';
+  return 'unknown';
+})();
+
+// Load persisted state on startup
+browser.storage.local.get(['whitelist', 'blocklist']).then(result => {
   whitelist = (result.whitelist || []).filter(e => e.expiresAt > Date.now());
   browser.storage.local.set({ whitelist });
+  blocklist = result.blocklist || [];
 });
 
 function pruneWhitelist() {
@@ -115,7 +124,7 @@ function connectToNativeHost() {
     
     // Send initial ping to test connection
     log('Sending ping to native host...');
-    port.postMessage({ type: 'PING' });
+    port.postMessage({ type: 'PING', browser: BROWSER_ID });
     
     // Request initial blocklist
     setTimeout(() => {
@@ -268,7 +277,7 @@ log('Background script loaded');
 setInterval(() => {
   if (port && isConnected) {
     try {
-      port.postMessage({ type: 'PING' });
+      port.postMessage({ type: 'PING', browser: BROWSER_ID });
     } catch (error) {
       log(`Error sending periodic ping: ${error.message}`);
     }

@@ -181,6 +181,14 @@ function requestBlocklist(callback) {
 
 log('Native messaging host started');
 
+// When extension is disabled/removed, Firefox closes stdin — exit cleanly so
+// Electron's socket close handler detects the disconnection immediately.
+process.stdin.on('end', () => {
+  log('stdin closed (extension disconnected), exiting');
+  if (appSocket) appSocket.end();
+  process.exit(0);
+});
+
 // Connect to Electron app
 connectToApp();
 
@@ -216,7 +224,7 @@ readMessage((message) => {
         connectedToApp: isConnectedToApp
       });
       if (isConnectedToApp && appSocket) {
-        appSocket.write(JSON.stringify({ type: 'PING', timestamp: Date.now() }) + '\n');
+        appSocket.write(JSON.stringify({ type: 'PING', browser: message.browser || 'unknown', timestamp: Date.now() }) + '\n');
       }
       break;
 
