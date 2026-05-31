@@ -1,6 +1,6 @@
 # **Installing Focus Bear on Linux (package managers)**
 
-This document describes how to install, verify, and uninstall the Focus Bear Linux application using distribution package managers. It currently includes verified flows for Arch Linux (`pacman`) and Fedora / RHEL-family distributions (`dnf` / `rpm`), with a roadmap for other formats.
+This document describes how to install, verify, and uninstall the Focus Bear Linux application using distribution package managers. It currently includes a verified flow for Arch Linux (`pacman`), with a roadmap for other formats.
 
 ## Arch Linux (pacman)
 
@@ -61,69 +61,13 @@ After uninstalling, the app should no longer appear in your launcher.
 
 ![][after-uninstall]
 
-## Fedora / RHEL / openSUSE (dnf / rpm)
-
-The `.rpm` artifact is produced by the same CI run as the `.deb` and `AppImage` (workflow: `.github/workflows/build-deb.yml`, target: `npm run package:full`). The filename follows `focusbear-<version>-<arch>.rpm`.
-
-### Install
-
-On Fedora-family distros (Fedora, RHEL, Rocky, AlmaLinux), prefer `dnf` so dependencies resolve automatically:
-
-```bash
-sudo dnf install /path/to/focusbear-<version>-x86_64.rpm
-```
-
-On openSUSE, use `zypper`:
-
-```bash
-sudo zypper install /path/to/focusbear-<version>-x86_64.rpm
-```
-
-If you prefer the low-level tool (no automatic dependency resolution — fails if `python3`, `nodejs`, or `zip` are missing):
-
-```bash
-sudo rpm -i /path/to/focusbear-<version>-x86_64.rpm
-```
-
-#### What the post-install scriptlet does
-
-Defined in `build/rpm-postinst`. It runs as root after files are laid down and:
-
-- Sets `chrome-sandbox` SUID so Electron's process sandbox works.
-- Writes a `/usr/bin/focusbear` wrapper that invokes the binary in `/opt/Focus Bear/` with `--no-sandbox` (the install path contains a space, which breaks Electron's `LaunchProcess` argv splitting).
-- Patches the `.desktop` `Exec=` to point at the wrapper.
-- Installs a system-wide Firefox native messaging manifest at `/usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json` and a wrapper at `/usr/local/bin/focusbear-native-host`.
-
-### Verify
-
-Inspect package metadata:
-
-```bash
-rpm -qi focusbear
-```
-
-List installed files:
-
-```bash
-rpm -ql focusbear
-```
-
-The app should appear in your application launcher and show a system tray icon once running (same expected behavior as the pacman flow above).
-
-### Uninstall
-
-```bash
-sudo dnf remove focusbear
-# or, equivalently:
-sudo rpm -e focusbear
-```
-
-The `%preun` scriptlet (`build/rpm-prerm`) only runs cleanup when `$1 = 0` (full uninstall), so an upgrade — where the old version's `%preun` fires *after* the new version's `%post` — won't strip the `/usr/bin/focusbear` wrapper or the native messaging manifest that the new install just created.
-
 ## Roadmap (other distribution formats)
+
+For other distributions, the packaging flow is conceptually similar; the main difference is the package format and distribution channel (e.g., `.rpm` for Fedora/Red Hat). This has not been implemented yet to avoid publishing incomplete packages to public repositories.
 
 The following tickets represent the next phases of distribution support:
 
+* Linux-App \#36 (.rpm): Targeting Fedora and Red Hat-based distributions.  
 * Linux-App \#37 (Flatpak): Providing a sandboxed, distribution-agnostic installation option.  
 * Linux-App \#38 (AppImage): Allowing the application to run as a standalone file without a formal installation process.
 
