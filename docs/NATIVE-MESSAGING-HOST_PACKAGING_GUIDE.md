@@ -127,4 +127,5 @@ ls ~/.local/share/focusbear/
 sudo dpkg -r focusbear
 # Verify cleanup
 ls /usr/bin/focusbear /usr/local/bin/focusbear-native-host 2>&1
+
 ```

@@ -134,47 +134,4 @@ Inspect extension console:
 
 ## Deprecated: mitmproxy Approach
 
-> **Note:** The mitmproxy-based blocking method is deprecated and will be removed in a future release. It is documented here for reference only.
-
-### Manual Configuration & User Burden
-
-A primary drawback of the mitmproxy architecture was the high degree of manual intervention required from the user. Because automated injection is unreliable across diverse Linux environments, the setup process mandated several manual steps that created a high barrier to entry:
-
-* **Manual Certificate Import:** Users had to navigate through deep browser security menus (e.g., `Settings -> Privacy & Security -> Certificates -> View Certificates`) to manually import the mitmproxy CA. This included the friction of trusting a root CA, which often triggered intimidating security warnings from the browser.
-* **Proxy Entry:** Users were required to manually toggle their browser's network settings to point to `localhost:8080`. This was a tedious process that most users expected to be handled "under the hood."
-* **Sandboxing Conflicts:** For users running browsers as **Flatpaks** or **Snaps**, manual configuration was even more complex due to filesystem isolation, often requiring additional permissions overrides (via Flatseal or CLI) just to allow the browser to see the local proxy or certificate files.
-
-This manual "onboarding" was not only a poor user experience but also a significant point of failure for non-technical users who found the process daunting or error-prone.
-
-### Technical Overview
-The implementation utilized **mitmproxy** to intercept and filter web traffic. For this to function, the following conditions had to be met:
-1.  **Certificate Trust:** A custom CA certificate had to be installed and trusted by the operating system and/or specific browser certificate stores (e.g., NSS).
-2.  **Proxy Configuration:** Browsers had to be configured to route traffic through the local `mitmproxy` instance.
-
-### Challenges & Limitations
-
-#### 1. Automation Complexity
-Automating these steps on Linux was notoriously difficult due to the fragmentation of certificate stores.
-* **System vs. Browser Stores:** Many browsers (like Firefox) use their own internal NSS database rather than the system-wide store.
-* **The "Brute Force" Method:** Previous suggestions included programmatically digging through every possible certificate store to inject the CA. This was fragile and posed security risks.
-* **Policy Constraints:** While browser policies could automate certificate installs, they generally required a **browser restart** to take effect, disrupting the user's workflow.
-
-#### 2. Performance Degradation
-The performance overhead of routing all web traffic through a local proxy was substantial. 
-* **Latency:** In testing, system-wide proxying showed potential traffic slowdowns of **up to 70x**. 
-* **Resource Usage:** Maintaining an active proxy service permanently incurred a constant CPU and memory footprint, which was undesirable for a productivity-focused application.
-
-#### 3. User Experience & Invasiveness
-For the Linux community, transparency and system integrity are paramount.
-* **Invasiveness:** Forcing a system-wide proxy was a heavy-handed approach for a URL-blocking feature.
-* **User Friction:** Requiring users to trust a custom root CA and endure significant network latency did not align with the goal of a lightweight, efficient Linux application.
-
-### Why We Moved Away
-The native messaging approach eliminates all of these issues:
-- No certificates to manage
-- No system proxy configuration
-- No performance overhead
-- Works seamlessly with sandboxed browsers
-- Simple one-click extension installation
-
-The mitmproxy functionality remains in the codebase for backward compatibility but is no longer the recommended blocking method.
+> **Note:** The mitmproxy-based blocking method has been completely removed from this codebase. The native messaging approach described above eliminates all the issues that mitmproxy had: no certificates to manage, no system proxy configuration, no performance overhead, and works seamlessly with sandboxed browsers.

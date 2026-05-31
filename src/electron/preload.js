@@ -165,6 +165,25 @@ const API = {
     openUpdateDownload: function(url) {
         return ipcRenderer.send('open-update-download', url);
     }
+    // Returns string[] of currently connected browser ids (e.g. ['firefox'])
+    getExtensionConnected: function() {
+        return ipcRenderer.invoke('get-extension-connected');
+    },
+
+    notifySetupComplete: function() {
+        ipcRenderer.send('setup-complete');
+    },
+
+    getLocalSettings: function() {
+        return ipcRenderer.invoke('get-local-settings');
+    },
+
+    // callback(browserId: string) fires each time a new browser's extension connects
+    onExtensionConnected: function(callback) {
+        const handler = function(event, browserId) { callback(browserId); };
+        ipcRenderer.on('extension-connected', handler);
+        return () => ipcRenderer.removeListener('extension-connected', handler);
+    },
 
 }
 

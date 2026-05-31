@@ -137,8 +137,8 @@ jobs:
       # ----------------------------------------------------------
       - name: Create .env file
         run: |
-          printf 'VITE_AUTH0_DOMAIN=%s\n' "$VITE_AUTH0_DOMAIN" >> .env
-          printf 'VITE_AUTH0_CLIENT_ID=%s\n' "$VITE_AUTH0_CLIENT_ID" >> .env
+          printf 'VITE_AUTH0_DOMAIN=%s\n' "$VITE_AUTH0_DOMAIN" > .env
+          printf 'VITE_AUTH0_CLIENT_ID=%s\n' "$VITE_AUTH0_CLIENT_ID" > .env
         env:
           VITE_AUTH0_DOMAIN: ${{ secrets.VITE_AUTH0_DOMAIN }}
           VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}

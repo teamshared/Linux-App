@@ -183,6 +183,10 @@ class SimpleAuth0Sync {
       subscribers.forEach(callback => callback(value));
     }
 
+    if (key === 'urlList') {
+      window.api?.exportList?.(value.join('\n'));
+    }
+
     // Queue save with debouncing
     this.queueSave();
   }
@@ -243,6 +247,8 @@ class SimpleAuth0Sync {
             }
           }
         });
+        const urlList = this.cache.get('urlList') ?? SYNCED_STATES.urlList;
+        window.api?.exportList?.(urlList.join('\n'));
         console.log('Force sync completed from Focus Bear API');
       }
     } catch (error) {
