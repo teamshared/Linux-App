@@ -64,8 +64,6 @@ else
 MANIFEST
 fi
 
-echo "Focus Bear installed. Extension files are at: ${APP_DIR}/resources/extension/"
-
 # ── systemd user service ─────────────────────────────────────────────────────
 # Installed system-wide at /usr/lib/systemd/user/ so any logged-in user can
 # opt in with `systemctl --user enable --now focusbear`. We deliberately do
@@ -77,7 +75,37 @@ if [ -f "$SYSTEMD_UNIT_SRC" ]; then
     mkdir -p /usr/lib/systemd/user
     cp "$SYSTEMD_UNIT_SRC" "$SYSTEMD_UNIT_DEST"
     chmod 644 "$SYSTEMD_UNIT_DEST"
-    echo "To run Focus Bear as a background service that restarts on crash:"
-    echo "  systemctl --user daemon-reload"
-    echo "  systemctl --user enable --now focusbear"
 fi
+
+# ── Print installation success message ────────────────────────────────────────
+echo ""
+echo "╔════════════════════════════════════════════════════════════════╗"
+echo "║          ✓ Focus Bear Installed Successfully!                  ║"
+echo "╚════════════════════════════════════════════════════════════════╝"
+echo ""
+echo "📱 Next Steps:"
+echo ""
+echo "1️⃣  Start Focus Bear:"
+echo "    focusbear"
+echo ""
+echo "2️⃣  Install Firefox Extension:"
+echo "    a) Open Firefox and go to: about:debugging#/runtime/this-firefox"
+echo "    b) Click 'Load Temporary Add-on'"
+echo "    c) Navigate to: ~/.local/share/focusbear/"
+echo "    d) Select: focusbear-extension.xpi"
+echo ""
+echo "3️⃣  (Optional) Enable Background Service:"
+echo "    Run these commands to start Focus Bear in the background:"
+echo "    systemctl --user daemon-reload"
+echo "    systemctl --user enable --now focusbear"
+echo ""
+echo "4️⃣  Verify Extension is Running:"
+echo "    - In Firefox, go to about:extensions"
+echo "    - Look for 'Focus Bear' extension"
+echo "    - It should show as 'Temporary' (will be permanent after installation)"
+echo ""
+echo "📝 Extension Location: ~/.local/share/focusbear/focusbear-extension.xpi"
+echo "📝 Config Location:    ~/.local/share/focusbear/"
+echo ""
+echo "🆘 Need Help? Visit: https://focusbear.io/help"
+echo ""
