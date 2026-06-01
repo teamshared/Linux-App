@@ -195,6 +195,7 @@ function isBrowserRunning() {
 function killBrowsers() {
   console.log('[PingMonitor] Killing Firefox');
   spawnSync('pkill', ['-x', 'firefox'], { stdio: 'pipe' });
+  spawnSync('pkill', ['-x', 'firefox-bin'], { stdio: 'pipe' });
   spawnSync('pkill', ['-x', 'firefox-esr'], { stdio: 'pipe' });
 }
 
