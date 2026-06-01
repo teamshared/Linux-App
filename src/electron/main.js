@@ -27,6 +27,7 @@ let currentWhitelist = [];
 let warningWindow = null;
 const connectedBrowsers = new Set();   // browser id strings currently connected
 const socketBrowsers = new Map();      // socket → browser id
+const browserLastConnected = new Map(); // browser id → timestamp of most recent connection
 let pingMonitorActive = false;
 
 const socketPingTimes = new Map(); // socket → lastPingAt ms
@@ -115,9 +116,16 @@ async function startSocketServer() {
           // Any traffic from native host means extension is alive
           socketPingTimes.set(socket, Date.now());
 
-          if (message.type === 'PING') {
+          if (message.type === 'NATIVE_HOST_CONNECTED') {
+            if (message.browser) {
+              socketBrowsers.set(socket, message.browser);
+              browserLastConnected.set(message.browser, Date.now());
+              console.log(`[Socket] Host identified as ${message.browser} on connect`);
+            }
+          } else if (message.type === 'PING') {
             const browser = message.browser || 'unknown';
             socketBrowsers.set(socket, browser);
+            browserLastConnected.set(browser, Date.now());
             if (!connectedBrowsers.has(browser)) {
               connectedBrowsers.add(browser);
               if (mainWindow) mainWindow.webContents.send('extension-connected', browser);
@@ -161,7 +169,7 @@ async function startSocketServer() {
       // Socket closed but browser still running → extension crashed/disabled (not a normal browser close).
       // Chrome MV3 service workers suspend normally and reconnect within ~60s via alarm — use long grace.
       // Firefox MV2 background is persistent — short grace is fine.
-      if (pingMonitorActive) {
+      if (pingMonitorActive && browser) {
         const closedBrowser = browser;
         const gracePeriod = closedBrowser === 'firefox' ? 5000 : 90000;
         setTimeout(() => {
@@ -172,6 +180,7 @@ async function startSocketServer() {
             showExtensionWarning(closedBrowser);
           }
         }, gracePeriod);
+        // If browser unknown (PING never received before disconnect), browserScan handles it
       }
     });
 
@@ -300,6 +309,7 @@ function startPingMonitor() {
     const now = Date.now();
     for (const [socket, lastPing] of socketPingTimes) {
       const browserId = socketBrowsers.get(socket);
+      if (!browserId) continue; // PING not yet received on this socket — skip
       const threshold = PING_SILENCE_THRESHOLD[browserId] ?? DEFAULT_PING_THRESHOLD;
       if (now - lastPing > threshold) {
         console.log(`[PingMonitor] No ping for ${threshold}ms on socket (browser: ${browserId}), checking`);
@@ -311,17 +321,23 @@ function startPingMonitor() {
     }
   }, 5000);
 
-  // Detect browser running without extension — checked on startup and every 30s after
+  // Detect browser running without extension — checked on startup and every 30s after.
+  // Chrome MV3 SWs suspend normally — give them 90s to reconnect before warning.
+  const BROWSER_SCAN_GRACE = { firefox: 5000 };
+  const DEFAULT_SCAN_GRACE = 90000;
+
   const browserScan = () => {
     if (extensionWarningActive) return;
     if (nativeHostClients.length > 0) return;
-    // Check each selected browser individually so we know which one to warn/kill
+    const now = Date.now();
     for (const browserId of selectedBrowsers) {
-      if (isBrowserRunning(browserId)) {
-        console.log(`[BrowserScan] ${browserId} running with no extension socket — showing warning`);
-        showExtensionWarning(browserId);
-        break;
-      }
+      if (!isBrowserRunning(browserId)) continue;
+      const grace = BROWSER_SCAN_GRACE[browserId] ?? DEFAULT_SCAN_GRACE;
+      const lastSeen = browserLastConnected.get(browserId) ?? 0;
+      if (now - lastSeen < grace) continue; // recently connected — SW may just be waking
+      console.log(`[BrowserScan] ${browserId} running with no socket for >${grace}ms — showing warning`);
+      showExtensionWarning(browserId);
+      break;
     }
   };
 

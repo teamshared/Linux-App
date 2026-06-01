@@ -12,6 +12,7 @@ const SOCKET_PATH = '/tmp/focusbear.sock';
 
 let appSocket = null;
 let isConnectedToApp = false;
+let cachedBrowserId = null;
 
 // Native messaging uses length-prefixed JSON messages
 function sendMessage(message) {
@@ -79,8 +80,8 @@ function connectToApp() {
     log('Connected to Electron app via socket');
     isConnectedToApp = true;
 
-    // Send initial handshake
-    appSocket.write(JSON.stringify({ type: 'NATIVE_HOST_CONNECTED' }) + '\n');
+    // Send initial handshake — include cached browser ID if known (covers reconnects)
+    appSocket.write(JSON.stringify({ type: 'NATIVE_HOST_CONNECTED', browser: cachedBrowserId }) + '\n');
   });
 
   appSocket.on('data', (data) => {
@@ -218,13 +219,14 @@ readMessage((message) => {
 
     case 'PING':
       log('Received ping, sending pong');
+      if (message.browser) cachedBrowserId = message.browser;
       sendMessage({
         type: 'PONG',
         timestamp: Date.now(),
         connectedToApp: isConnectedToApp
       });
       if (isConnectedToApp && appSocket) {
-        appSocket.write(JSON.stringify({ type: 'PING', browser: message.browser || 'unknown', timestamp: Date.now() }) + '\n');
+        appSocket.write(JSON.stringify({ type: 'PING', browser: cachedBrowserId || 'unknown', timestamp: Date.now() }) + '\n');
       }
       break;
 
