@@ -158,15 +158,20 @@ async function startSocketServer() {
       if (browser && ![...socketBrowsers.values()].includes(browser)) {
         connectedBrowsers.delete(browser);
       }
-      // Socket closed but browser still running → extension crashed/disabled (not a normal browser close)
+      // Socket closed but browser still running → extension crashed/disabled (not a normal browser close).
+      // Chrome MV3 service workers suspend normally and reconnect within ~60s via alarm — use long grace.
+      // Firefox MV2 background is persistent — short grace is fine.
       if (pingMonitorActive) {
         const closedBrowser = browser;
+        const gracePeriod = closedBrowser === 'firefox' ? 5000 : 90000;
         setTimeout(() => {
+          // Cancel if browser already reconnected during grace period
+          if ([...socketBrowsers.values()].includes(closedBrowser)) return;
           if (!extensionWarningActive && isBrowserRunning(closedBrowser)) {
-            console.log(`[PingMonitor] Socket closed, ${closedBrowser} still running — showing warning`);
+            console.log(`[PingMonitor] Socket closed, ${closedBrowser} still running after grace — showing warning`);
             showExtensionWarning(closedBrowser);
           }
-        }, 5000);
+        }, gracePeriod);
       }
     });
 
@@ -265,7 +270,9 @@ function showExtensionWarning(browserId) {
       contextIsolation: false,
     },
   });
-  warningWindow.loadFile(join(__dirname, 'extension-warning.html'));
+  const BROWSER_NAMES = { firefox: 'Firefox', chrome: 'Chrome', chromium: 'Chromium', brave: 'Brave', opera: 'Opera' };
+  const browserName = BROWSER_NAMES[browserId] || 'your browser';
+  warningWindow.loadFile(join(__dirname, 'extension-warning.html'), { query: { browser: browserName } });
   warningWindow.webContents.once('did-finish-load', () => {
     if (!warningWindow) return;
     warningWindow.webContents.executeJavaScript('document.querySelector(".card").getBoundingClientRect().height + 48')
@@ -283,14 +290,19 @@ function startPingMonitor() {
   if (pingMonitorActive) return;
   pingMonitorActive = true;
 
-  // Detect extension going silent on an existing connection
+  // Firefox MV2 pings every 10s — 20s threshold catches hung extensions.
+  // Chrome MV3 alarms fire every 60s (Chrome minimum) — 90s threshold avoids false positives.
+  const PING_SILENCE_THRESHOLD = { firefox: 20000 };
+  const DEFAULT_PING_THRESHOLD = 90000;
+
   setInterval(() => {
     if (extensionWarningActive) return;
     const now = Date.now();
     for (const [socket, lastPing] of socketPingTimes) {
-      if (now - lastPing > 15000) {
-        const browserId = socketBrowsers.get(socket);
-        console.log(`[PingMonitor] No ping for 15s on socket (browser: ${browserId}), checking`);
+      const browserId = socketBrowsers.get(socket);
+      const threshold = PING_SILENCE_THRESHOLD[browserId] ?? DEFAULT_PING_THRESHOLD;
+      if (now - lastPing > threshold) {
+        console.log(`[PingMonitor] No ping for ${threshold}ms on socket (browser: ${browserId}), checking`);
         if (isBrowserRunning(browserId)) {
           showExtensionWarning(browserId);
         }

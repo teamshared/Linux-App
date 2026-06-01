@@ -174,6 +174,22 @@ function connectToNativeHost() {
   }
 }
 
+// ── Offscreen keepalive ───────────────────────────────────────────────────────
+
+async function ensureOffscreenDocument() {
+  try {
+    if (await chrome.offscreen.hasDocument?.()) return;
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['BLOBS'],
+      justification: 'Keepalive pings to keep service worker alive for native messaging'
+    });
+  } catch (err) {
+    // Throws if document already exists in older Chrome without hasDocument()
+    if (!err.message?.includes('Only a single offscreen')) log('Offscreen error: ' + err.message);
+  }
+}
+
 // ── Startup ───────────────────────────────────────────────────────────────────
 
 async function restoreState() {
@@ -186,13 +202,21 @@ async function restoreState() {
 chrome.runtime.onInstalled.addListener(async () => {
   await restoreState();
   connectToNativeHost();
+  ensureOffscreenDocument();
   chrome.alarms.create('pruneWhitelist', { periodInMinutes: 1 });
-  chrome.alarms.create('ping', { periodInMinutes: 0.5 });
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await restoreState();
   connectToNativeHost();
+  ensureOffscreenDocument();
+});
+
+// SW wakes cold on every message/alarm — restore state and reconnect each time.
+// onInstalled/onStartup only fire once; this covers all subsequent wakes.
+restoreState().then(() => {
+  if (!port) connectToNativeHost();
+  ensureOffscreenDocument();
 });
 
 // Re-connect on wake if port is gone
@@ -216,11 +240,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 
   if (alarm.name === 'ping') {
-    if (!port || !isConnected) {
-      connectToNativeHost();
-    } else {
-      try { port.postMessage({ type: 'PING', browser: BROWSER_ID }); } catch {}
-    }
+    // Legacy alarm — offscreen document now handles keepalive. Just ensure connection.
+    if (!port || !isConnected) connectToNativeHost();
   }
 });
 
@@ -260,6 +281,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     notifyWhitelistUpdate();
     updateDNRRules();
     sendResponse({ success: true });
+
+  } else if (message.type === 'KEEPALIVE') {
+    sendResponse({ alive: true });
 
   } else if (message.type === 'REMOVE_WHITELIST') {
     whitelist = pruneWhitelist().filter(e => e.pattern !== message.pattern);
