@@ -11,6 +11,18 @@ let isConnectedToApp = false;
 const WHITELIST_DURATION_MS = 30 * 60 * 1000;
 const NATIVE_HOST = 'com.focusbear.native_host';
 
+// Detect which Chromium-based browser we're in so Electron knows which process to kill.
+// UA strings are useless here — Chromium's UA is identical to Chrome's.
+// userAgentData.brands is the reliable signal: Chrome has "Google Chrome", Chromium does not.
+const BROWSER_ID = (() => {
+  if (typeof navigator.brave !== 'undefined') return 'brave';
+  if (/OPR\/|Opera/.test(navigator.userAgent)) return 'opera';
+  const brands = navigator.userAgentData?.brands?.map(b => b.brand) ?? [];
+  if (brands.includes('Google Chrome')) return 'chrome';
+  if (brands.includes('Chromium')) return 'chromium';
+  return 'chrome';
+})();
+
 function log(message) {
   console.log('[Focus Bear Extension]', message);
 }
@@ -152,7 +164,7 @@ function connectToNativeHost() {
       setTimeout(connectToNativeHost, 5000);
     });
 
-    port.postMessage({ type: 'PING', browser: 'chrome' });
+    port.postMessage({ type: 'PING', browser: BROWSER_ID });
     setTimeout(() => port?.postMessage({ type: 'GET_BLOCKLIST' }), 100);
 
   } catch (err) {
@@ -207,7 +219,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (!port || !isConnected) {
       connectToNativeHost();
     } else {
-      try { port.postMessage({ type: 'PING', browser: 'chrome' }); } catch {}
+      try { port.postMessage({ type: 'PING', browser: BROWSER_ID }); } catch {}
     }
   }
 });

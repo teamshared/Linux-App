@@ -37,13 +37,19 @@ let warningBrowserId = null; // browser that triggered the current warning
 let selectedBrowsers = ['firefox']; // persisted from setup; updated via applySettings
 
 const BROWSER_PGREP_PATTERNS = {
-  firefox: ['firefox'],
-  chrome:  ['google-chrome', 'chromium'],
+  firefox:  ['firefox'],
+  chrome:   ['google-chrome'],
+  chromium: ['chromium'],
+  brave:    ['brave'],
+  opera:    ['opera'],
 };
 
 const BROWSER_KILL_TARGETS = {
-  firefox: ['firefox', 'firefox-bin', 'firefox-esr'],
-  chrome:  ['google-chrome', 'chrome', 'chromium', 'chromium-browser'],
+  firefox:  ['firefox', 'firefox-bin', 'firefox-esr'],
+  chrome:   ['google-chrome', 'chrome'],
+  chromium: ['chromium', 'chromium-browser'],
+  brave:    ['brave', 'brave-browser'],
+  opera:    ['opera'],
 };
 
 function getWhitelistPath() {
@@ -376,6 +382,8 @@ async function installNativeMessaging() {
       join(homedir(), '.config', 'google-chrome-beta', 'NativeMessagingHosts'),
       join(homedir(), '.config', 'google-chrome-unstable', 'NativeMessagingHosts'),
       join(homedir(), '.config', 'chromium', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'BraveSoftware', 'Brave-Browser', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'opera', 'NativeMessagingHosts'),
     ]) {
       await fs.mkdir(dir, { recursive: true }).catch(() => {});
       await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), chromeManifest).catch(() => {});
