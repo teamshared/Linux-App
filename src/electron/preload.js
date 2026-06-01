@@ -164,7 +164,7 @@ const API = {
 
     openUpdateDownload: function(url) {
         return ipcRenderer.send('open-update-download', url);
-    }
+    },
     // Returns string[] of currently connected browser ids (e.g. ['firefox'])
     getExtensionConnected: function() {
         return ipcRenderer.invoke('get-extension-connected');

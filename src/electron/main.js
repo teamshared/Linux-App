@@ -4,42 +4,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
-
-// Detect if running from AppImage before any display-dependent code
-// process.env.APPIMAGE is set by the AppImage runtime
-const isAppImage = !!process.env.APPIMAGE;
-const isHeadless = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
-
-// AppImage mounts itself read-only via squashfs+FUSE, which strips the SUID
-// bit from chrome-sandbox. On systems where Electron can't fall back to the
-// user-namespace sandbox (AppArmor unprivileged_userns profile, or
-// /proc/sys/kernel/unprivileged_userns_clone = 0) the app aborts at launch.
-// The .deb/.rpm install wrappers pass --no-sandbox for the same reason; the
-// AppImage has no install step, so we set the switch here.
-if (isAppImage) {
-    app.commandLine.appendSwitch('no-sandbox');
-    console.log('[Main Process] AppImage detected - sandbox disabled');
-}
-
-// In headless environments (no X11/Wayland), disable GPU and configure for headless rendering
-if (isHeadless) {
-    console.log('[Main Process] Headless environment detected - disabling GPU and GUI features');
-    app.commandLine.appendSwitch('disable-gpu');
-    app.commandLine.appendSwitch('disable-gpu-compositing');
-    // Use offscreen rendering instead of trying specific ozone platforms
-    app.commandLine.appendSwitch('type', 'renderer');
-    // Suppress D-Bus warnings
-    process.env.DBUS_SYSTEM_BUS_ADDRESS = 'unix:path=/dev/null';
-    process.env.DBUS_SESSION_BUS_ADDRESS = 'unix:path=/dev/null';
-    // Disable hardware acceleration
-    process.env.LIBGL_ALWAYS_INDIRECT = '1';
-}
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
 import { exec, execFile, spawn, execSync, spawnSync } from 'child_process';
 import "./Blocker.js"
 import { setBroadcastFunction } from './Blocker.js';
-import { startUpdateChecker, stopUpdateChecker, checkForUpdates, getLastResult, openDownloadUrl } from './updateChecker.js';
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
 import dotenv from 'dotenv';
@@ -56,11 +25,11 @@ let nativeHostClients = [];
 let currentBlocklist = [];
 let currentWhitelist = [];
 let warningWindow = null;
-const connectedBrowsers = new Set();   // browser id strings currently connected
-const socketBrowsers = new Map();      // socket → browser id
+const connectedBrowsers = new Set();
+const socketBrowsers = new Map();
 let pingMonitorActive = false;
 
-const socketPingTimes = new Map(); // socket → lastPingAt ms
+const socketPingTimes = new Map();
 let extensionWarningTimer = null;
 let extensionWarningActive = false;
 
@@ -331,32 +300,11 @@ async function installNativeMessaging() {
       await fs.copyFile(join(extensionSrcDir, f), join(localExtDir, f)).catch(() => {});
     }
 
-    // Wrapper at ~/.local/bin points to the home-dir copy of host.js.
-    // Under AppImage we can't declare a runtime dep on `nodejs`, so users
-    // without node-on-PATH would get a silently broken native host. Use
-    // Electron's built-in Node (ELECTRON_RUN_AS_NODE=1) and reference the
-    // AppImage by its stable launcher path (process.env.APPIMAGE) — the
-    // per-launch /tmp/.mount_*/ path in process.execPath disappears as soon
-    // as the AppImage exits, so it can't go in the wrapper.
+    // Wrapper at ~/.local/bin points to the home-dir copy of host.js
     const wrapperDir = join(homedir(), '.local', 'bin');
     const wrapperPath = join(wrapperDir, 'focusbear-native-host');
-    const hostJsPath = join(localNativeDir, 'host.js');
     await fs.mkdir(wrapperDir, { recursive: true });
-
-    let wrapperContent;
-    if (isAppImage && process.env.APPIMAGE) {
-      // Use the stable APPIMAGE path for the native host wrapper
-      wrapperContent = `#!/bin/sh
-export ELECTRON_RUN_AS_NODE=1
-exec "${process.env.APPIMAGE}" "${hostJsPath}" "$@"
-`;
-    } else {
-      // Fall back to system node for non-AppImage installations
-      wrapperContent = `#!/bin/sh
-exec node "${hostJsPath}" "$@"
-`;
-    }
-    await fs.writeFile(wrapperPath, wrapperContent);
+    await fs.writeFile(wrapperPath, `#!/bin/sh\nexec node "${join(localNativeDir, 'host.js')}" "$@"\n`);
     await fs.chmod(wrapperPath, 0o755);
 
     // Write manifest to all known Firefox locations (regular + snap)
@@ -451,15 +399,6 @@ app.on("ready", function(){
     // Install native messaging host
     installNativeMessaging();
 
-    // Poll GitHub releases for newer versions and push status to the renderer.
-    startUpdateChecker(broadcastUpdateStatus);
-
-    // --hidden: skip showing the main window at startup. Used by the systemd
-    // user service so logging in doesn't flash the window onscreen — the tray
-    // icon is still created, and clicking it opens the window normally.
-    const startHidden = process.argv.includes('--hidden');
-
-    const windowConfig = {
     // Only monitor extension liveness after setup is complete.
     // Checked from disk so the decision is made before the renderer loads.
     fs.readFile(getSettingsPath(), 'utf8')
@@ -470,21 +409,14 @@ app.on("ready", function(){
         autoHideMenuBar: true,
         height: 850,
         width: 1000,
-        show: !startHidden && !isHeadless,
+        show: true,
         webviewTag: true,
         webPreferences: {
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
             webSecurity: false,
         },
-        devTools: !isHeadless,
-    };
-
-    // Use offscreen rendering in headless mode
-    if (isHeadless) {
-        windowConfig.offscreen = true;
-    }
-
-    mainWindow = new BrowserWindow(windowConfig);
+        devTools: true,
+    });
     tray = createTray(mainWindow)
 
     const isDev = !app.isPackaged;
@@ -685,25 +617,6 @@ app.on('before-quit', function() {
 
 app.on('will-quit', function() {
     exitflag = false;
-});
-
-function broadcastUpdateStatus(status) {
-    if (!status) return;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-status', status);
-    }
-}
-
-ipcMain.handle('check-for-updates', async () => {
-    const result = await checkForUpdates({ silent: false });
-    broadcastUpdateStatus(result);
-    return result;
-});
-
-ipcMain.handle('get-last-update-status', async () => getLastResult());
-
-ipcMain.on('open-update-download', (event, url) => {
-    openDownloadUrl(url);
 });
 
 // Focus state broadcasting
