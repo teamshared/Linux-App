@@ -107,6 +107,33 @@ function pruneWhitelist() {
   return whitelist;
 }
 
+function isWhitelistedUrl(url) {
+  const active = whitelist.filter(e => e.expiresAt > Date.now());
+  for (const entry of active) {
+    try {
+      if (entry.type === 'exact' && url.replace(/^https?:\/\//, '') === entry.pattern.replace(/^https?:\/\//, '')) return true;
+      if (entry.type === 'domain') {
+        const hostname = new URL(url).hostname;
+        if (hostname === entry.pattern || hostname.endsWith('.' + entry.pattern)) return true;
+      }
+    } catch {}
+  }
+  return false;
+}
+
+async function maybeBlockTab(tabId, url) {
+  if (!url || !url.startsWith('http')) return;
+  if (isWhitelistedUrl(url) || !isBlockedByList(url)) return;
+  await chrome.tabs.update(tabId, { url: chrome.runtime.getURL('blocked.html') + '#' + url }).catch(() => {});
+}
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.url) await maybeBlockTab(tabId, tab.url);
+  } catch {}
+});
+
 function notifyWhitelistUpdate() {
   if (port && isConnected) {
     try {
@@ -132,6 +159,9 @@ function connectToNativeHost() {
           blocklist = message.data || [];
           chrome.storage.local.set({ blocklist, lastUpdate: message.timestamp });
           updateDNRRules();
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]?.url) maybeBlockTab(tabs[0].id, tabs[0].url).catch(() => {});
+          });
           break;
 
         case 'WHITELIST_RESPONSE':
@@ -204,6 +234,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   connectToNativeHost();
   ensureOffscreenDocument();
   chrome.alarms.create('pruneWhitelist', { periodInMinutes: 1 });
+  chrome.alarms.create('ping', { periodInMinutes: 1 });
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -217,6 +248,8 @@ chrome.runtime.onStartup.addListener(async () => {
 restoreState().then(() => {
   if (!port) connectToNativeHost();
   ensureOffscreenDocument();
+  // Ensure ping alarm survives SW restarts (alarms persist but recreating is idempotent)
+  chrome.alarms.get('ping', alarm => { if (!alarm) chrome.alarms.create('ping', { periodInMinutes: 1 }); });
 });
 
 // Re-connect on wake if port is gone
@@ -240,8 +273,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 
   if (alarm.name === 'ping') {
-    // Legacy alarm — offscreen document now handles keepalive. Just ensure connection.
     if (!port || !isConnected) connectToNativeHost();
+    else port.postMessage({ type: 'PING', browser: BROWSER_ID });
   }
 });
 
@@ -283,6 +316,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
 
   } else if (message.type === 'KEEPALIVE') {
+    if (port && isConnected) port.postMessage({ type: 'PING', browser: BROWSER_ID });
     sendResponse({ alive: true });
 
   } else if (message.type === 'REMOVE_WHITELIST') {

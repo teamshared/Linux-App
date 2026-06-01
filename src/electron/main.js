@@ -6,7 +6,8 @@ const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
-import { exec, execFile, spawn, execSync, spawnSync } from 'child_process';
+import { exec, execFile, spawn, execSync } from 'child_process';
+import { promisify } from 'util';
 import "./Blocker.js"
 import { setBroadcastFunction } from './Blocker.js';
 import { focusState } from './focusState.js';
@@ -18,19 +19,18 @@ import { unlink } from 'fs/promises';
 
 dotenv.config();
 
+const execFileAsync = promisify(execFile);
+
 // Unix domain socket server for native messaging
 const SOCKET_PATH = '/tmp/focusbear.sock';
 let socketServer = null;
-let nativeHostClients = [];
+const socketClients = new Map();       // socket → {browser: string|null, lastPing: number}
 let currentBlocklist = [];
 let currentWhitelist = [];
 let warningWindow = null;
-const connectedBrowsers = new Set();   // browser id strings currently connected
-const socketBrowsers = new Map();      // socket → browser id
+const connectedBrowsers = new Set();   // browser id strings that have sent PING
 const browserLastConnected = new Map(); // browser id → timestamp of most recent connection
 let pingMonitorActive = false;
-
-const socketPingTimes = new Map(); // socket → lastPingAt ms
 let extensionWarningTimer = null;
 let extensionWarningActive = false;
 let warningBrowserId = null; // browser that triggered the current warning
@@ -47,7 +47,7 @@ const BROWSER_PGREP_PATTERNS = {
 
 const BROWSER_KILL_TARGETS = {
   firefox:  ['firefox', 'firefox-bin', 'firefox-esr'],
-  chrome:   ['google-chrome', 'chrome'],
+  chrome:   ['google-chrome'],
   chromium: ['chromium', 'chromium-browser'],
   brave:    ['brave', 'brave-browser'],
   opera:    ['opera'],
@@ -86,8 +86,7 @@ async function startSocketServer() {
 
   socketServer = createServer((socket) => {
     console.log('[Socket] Native host connected');
-    nativeHostClients.push(socket);
-    socketPingTimes.set(socket, Date.now());
+    socketClients.set(socket, { browser: null, lastPing: Date.now() });
 
     // Push current blocklist immediately so new connections don't wait for a GET_BLOCKLIST
     if (currentBlocklist.length > 0) {
@@ -111,26 +110,35 @@ async function startSocketServer() {
       lines.forEach(line => {
         try {
           const message = JSON.parse(line);
-          console.log('[Socket] Received from native host:', message.type);
+          const browserTag = message.browser ? ` (${message.browser})` : '';
+          console.log(`[Socket] Received from native host: ${message.type}${browserTag}`);
 
           // Any traffic from native host means extension is alive
-          socketPingTimes.set(socket, Date.now());
+          if (socketClients.has(socket)) socketClients.get(socket).lastPing = Date.now();
 
           if (message.type === 'NATIVE_HOST_CONNECTED') {
             if (message.browser) {
-              socketBrowsers.set(socket, message.browser);
+              // Evict stale sockets already claiming this browser (old host didn't clean up)
+              for (const [s, c] of socketClients) {
+                if (s !== socket && c.browser === message.browser) {
+                  console.log(`[Socket] Evicting stale ${message.browser} socket (new host connected)`);
+                  s.destroy();
+                  socketClients.delete(s);
+                }
+              }
+              if (socketClients.has(socket)) socketClients.get(socket).browser = message.browser;
               browserLastConnected.set(message.browser, Date.now());
               console.log(`[Socket] Host identified as ${message.browser} on connect`);
             }
           } else if (message.type === 'PING') {
             const browser = message.browser || 'unknown';
-            socketBrowsers.set(socket, browser);
+            if (socketClients.has(socket)) socketClients.get(socket).browser = browser;
             browserLastConnected.set(browser, Date.now());
             if (!connectedBrowsers.has(browser)) {
               connectedBrowsers.add(browser);
               if (mainWindow) mainWindow.webContents.send('extension-connected', browser);
             }
-            cancelExtensionWarning();
+            if (!warningBrowserId || warningBrowserId === browser) cancelExtensionWarning();
           } else if (message.type === 'GET_BLOCKLIST') {
             console.log(`[Socket] Sending blocklist: ${currentBlocklist.length} entries`);
             socket.write(JSON.stringify({
@@ -159,11 +167,10 @@ async function startSocketServer() {
 
     socket.on('close', () => {
       console.log('[Socket] Native host disconnected');
-      nativeHostClients = nativeHostClients.filter(s => s !== socket);
-      socketPingTimes.delete(socket);
-      const browser = socketBrowsers.get(socket);
-      socketBrowsers.delete(socket);
-      if (browser && ![...socketBrowsers.values()].includes(browser)) {
+      const client = socketClients.get(socket);
+      socketClients.delete(socket);
+      const browser = client?.browser;
+      if (browser && ![...socketClients.values()].some(c => c.browser === browser)) {
         connectedBrowsers.delete(browser);
       }
       // Socket closed but browser still running → extension crashed/disabled (not a normal browser close).
@@ -172,10 +179,10 @@ async function startSocketServer() {
       if (pingMonitorActive && browser) {
         const closedBrowser = browser;
         const gracePeriod = closedBrowser === 'firefox' ? 5000 : 90000;
-        setTimeout(() => {
+        setTimeout(async () => {
           // Cancel if browser already reconnected during grace period
-          if ([...socketBrowsers.values()].includes(closedBrowser)) return;
-          if (!extensionWarningActive && isBrowserRunning(closedBrowser)) {
+          if ([...socketClients.values()].some(c => c.browser === closedBrowser)) return;
+          if (!extensionWarningActive && await isBrowserRunning(closedBrowser)) {
             console.log(`[PingMonitor] Socket closed, ${closedBrowser} still running after grace — showing warning`);
             showExtensionWarning(closedBrowser);
           }
@@ -208,33 +215,36 @@ function broadcastBlocklistUpdate(blocklist) {
     timestamp: Date.now()
   }) + '\n';
 
-  console.log(`[Socket] Broadcasting blocklist update to ${nativeHostClients.length} clients`);
+  console.log(`[Socket] Broadcasting blocklist update to ${socketClients.size} clients`);
 
-  nativeHostClients.forEach(client => {
+  for (const socket of socketClients.keys()) {
     try {
-      client.write(message);
+      socket.write(message);
     } catch (error) {
       console.error('[Socket] Error broadcasting to client:', error);
     }
-  });
+  }
 }
 
 // browserId: check only that browser. Omit to check all selected browsers.
-function isBrowserRunning(browserId) {
+async function isBrowserRunning(browserId) {
   const ids = browserId ? [browserId] : selectedBrowsers;
-  return ids.some(id => {
-    const patterns = BROWSER_PGREP_PATTERNS[id] || [];
-    return patterns.some(p => spawnSync('pgrep', ['-f', p], { stdio: 'pipe' }).status === 0);
-  });
+  for (const id of ids) {
+    for (const p of (BROWSER_PGREP_PATTERNS[id] || [])) {
+      try {
+        await execFileAsync('pgrep', ['-f', p]);
+        return true;
+      } catch { /* no match */ }
+    }
+  }
+  return false;
 }
 
 // browserId: kill only that browser's processes.
-function killBrowsers(browserId) {
+async function killBrowsers(browserId) {
   const targets = BROWSER_KILL_TARGETS[browserId] || [];
   console.log(`[PingMonitor] Killing ${browserId} (${targets.join(', ')})`);
-  for (const name of targets) {
-    spawnSync('pkill', ['-x', name], { stdio: 'pipe' });
-  }
+  await Promise.all(targets.map(name => execFileAsync('pkill', ['-x', name]).catch(() => {})));
 }
 
 function destroyWarningWindow() {
@@ -260,11 +270,12 @@ function showExtensionWarning(browserId) {
   warningBrowserId = browserId || null;
   console.log(`[PingMonitor] Showing extension disconnected warning (browser: ${browserId})`);
 
-  extensionWarningTimer = setTimeout(() => {
+  const timerBrowserId = browserId || null;
+  extensionWarningTimer = setTimeout(async () => {
     extensionWarningActive = false;
     extensionWarningTimer = null;
     destroyWarningWindow();
-    killBrowsers(warningBrowserId);
+    await killBrowsers(timerBrowserId);
   }, 30000);
 
   warningWindow = new BrowserWindow({
@@ -304,19 +315,25 @@ function startPingMonitor() {
   const PING_SILENCE_THRESHOLD = { firefox: 20000 };
   const DEFAULT_PING_THRESHOLD = 90000;
 
-  setInterval(() => {
+  setInterval(async () => {
     if (extensionWarningActive) return;
     const now = Date.now();
-    for (const [socket, lastPing] of socketPingTimes) {
-      const browserId = socketBrowsers.get(socket);
-      if (!browserId) continue; // PING not yet received on this socket — skip
+    // Aggregate per-browser: use the freshest lastPing across all sockets for that browser.
+    // A stale zombie socket must not trigger a false positive if a fresh socket also exists.
+    const freshestByBrowser = new Map();
+    for (const [, client] of socketClients) {
+      if (!client.browser) continue;
+      const prev = freshestByBrowser.get(client.browser) ?? 0;
+      if (client.lastPing > prev) freshestByBrowser.set(client.browser, client.lastPing);
+    }
+    for (const [browserId, lastPing] of freshestByBrowser) {
       const threshold = PING_SILENCE_THRESHOLD[browserId] ?? DEFAULT_PING_THRESHOLD;
       if (now - lastPing > threshold) {
-        console.log(`[PingMonitor] No ping for ${threshold}ms on socket (browser: ${browserId}), checking`);
-        if (isBrowserRunning(browserId)) {
+        console.log(`[PingMonitor] No ping for ${threshold}ms (browser: ${browserId}), checking`);
+        if (await isBrowserRunning(browserId)) {
           showExtensionWarning(browserId);
+          break;
         }
-        break;
       }
     }
   }, 5000);
@@ -326,16 +343,16 @@ function startPingMonitor() {
   const BROWSER_SCAN_GRACE = { firefox: 5000 };
   const DEFAULT_SCAN_GRACE = 90000;
 
-  const browserScan = () => {
+  const browserScan = async () => {
     if (extensionWarningActive) return;
-    if (nativeHostClients.length > 0) return;
     const now = Date.now();
     for (const browserId of selectedBrowsers) {
-      if (!isBrowserRunning(browserId)) continue;
+      if (connectedBrowsers.has(browserId)) continue;
+      if (!await isBrowserRunning(browserId)) continue;
       const grace = BROWSER_SCAN_GRACE[browserId] ?? DEFAULT_SCAN_GRACE;
       const lastSeen = browserLastConnected.get(browserId) ?? 0;
       if (now - lastSeen < grace) continue; // recently connected — SW may just be waking
-      console.log(`[BrowserScan] ${browserId} running with no socket for >${grace}ms — showing warning`);
+      console.log(`[BrowserScan] ${browserId} running without extension for >${grace}ms — showing warning`);
       showExtensionWarning(browserId);
       break;
     }
@@ -641,9 +658,9 @@ ipcMain.handle('get-local-settings', async () => {
 
 ipcMain.on('setup-complete', () => { startPingMonitor(); });
 
-ipcMain.on('extension-warning-close-browser', () => {
+ipcMain.on('extension-warning-close-browser', async () => {
   cancelExtensionWarning();
-  killBrowsers(warningBrowserId);
+  await killBrowsers(warningBrowserId);
 });
 
 ipcMain.on('quit-channel', function() {
@@ -725,7 +742,7 @@ app.on('before-quit', function() {
     // Close socket server
     if (socketServer) {
         socketServer.close();
-        nativeHostClients.forEach(client => client.end());
+        for (const socket of socketClients.keys()) socket.end();
     }
 });
 

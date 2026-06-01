@@ -50,6 +50,39 @@ function isWhitelisted(url) {
   return false;
 }
 
+function isBlockedUrl(url) {
+  for (const pattern of blocklist) {
+    try {
+      if (url.includes(pattern)) return true;
+      if (pattern.includes('.*') || pattern.includes('\\')) {
+        try { if (new RegExp(pattern, 'i').test(url)) return true; } catch (e) {}
+      }
+      try {
+        const hostname = new URL(url).hostname;
+        if (hostname === pattern || hostname.endsWith('.' + pattern) ||
+            (pattern.startsWith('.') && hostname.endsWith(pattern))) return true;
+      } catch (e) {}
+    } catch (e) {}
+  }
+  return false;
+}
+
+function maybeBlockTab(tabId, url) {
+  if (!url || !url.startsWith('http')) return;
+  if (url.startsWith(browser.runtime.getURL(''))) return;
+  if (isWhitelisted(url) || !isBlockedUrl(url)) return;
+  const blockPageUrl = browser.runtime.getURL('blocked.html') +
+    `?url=${encodeURIComponent(url)}&reason=tab_switch`;
+  browser.tabs.update(tabId, { url: blockPageUrl }).catch(() => {});
+}
+
+browser.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await browser.tabs.get(tabId);
+    if (tab.url) maybeBlockTab(tabId, tab.url);
+  } catch (e) {}
+});
+
 function notifyWhitelistUpdate() {
   if (port && isConnected) {
     try {
@@ -78,10 +111,10 @@ function connectToNativeHost() {
         case 'BLOCKLIST_UPDATE':
           blocklist = message.data || [];
           log(`Updated blocklist: ${blocklist.length} entries`);
-          browser.storage.local.set({
-            blocklist: blocklist,
-            lastUpdate: message.timestamp
-          });
+          browser.storage.local.set({ blocklist, lastUpdate: message.timestamp });
+          browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+            if (tabs[0]?.url) maybeBlockTab(tabs[0].id, tabs[0].url);
+          }).catch(() => {});
           break;
 
         case 'WHITELIST_RESPONSE':
