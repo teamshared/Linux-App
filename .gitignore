@@ -33,3 +33,6 @@ src/python/__pycache__
 *.njsproj
 *.sln
 *.sw?
+
+# Chrome extension private key (public key is in extension-chrome/manifest.json)
+build/chrome-ext-key.pem

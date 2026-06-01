@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Focus Bear Blocker</title>
+  <style>
+    body {
+      width: 400px;
+      min-height: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 16px 0;
+      color: #333;
+    }
+
+    .status {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status::before {
+      content: '●';
+      font-size: 18px;
+    }
+
+    .status.connected {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .status.connected::before {
+      color: #28a745;
+    }
+
+    .status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status.disconnected::before {
+      color: #dc3545;
+    }
+
+    .status.warning {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+
+    .status.warning::before {
+      color: #ffc107;
+    }
+
+    .debug-section {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .debug-section summary {
+      cursor: pointer;
+      color: #6c757d;
+      font-weight: 500;
+      user-select: none;
+      padding: 4px;
+    }
+
+    .debug-section summary:hover {
+      color: #495057;
+    }
+
+    .status-small {
+      padding: 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-small::before {
+      content: '●';
+      font-size: 12px;
+    }
+
+    .status-small.connected {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .status-small.connected::before {
+      color: #28a745;
+    }
+
+    .status-small.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status-small.disconnected::before {
+      color: #dc3545;
+    }
+
+    .section {
+      background: white;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .section-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: #555;
+    }
+
+    .blocklist {
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      padding: 8px;
+    }
+
+    .blocklist-item {
+      padding: 4px 8px;
+      margin: 2px 0;
+      background: white;
+      border-radius: 3px;
+      border-left: 3px solid #007bff;
+      word-break: break-all;
+    }
+
+    .empty {
+      color: #999;
+      font-style: italic;
+      text-align: center;
+      padding: 20px;
+    }
+
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      width: 100%;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    button:active {
+      background: #004085;
+    }
+
+    .logo-inline {
+      display: block;
+      width: 100%;
+      height: 40px;
+      object-fit: contain;
+      margin: 0 0 16px 0;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #666;
+      margin-top: 8px;
+    }
+
+    .whitelist-item {
+      padding: 6px 8px;
+      margin: 3px 0;
+      background: #fff8e6;
+      border-radius: 3px;
+      border-left: 3px solid #ed8936;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .whitelist-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .whitelist-item-pattern {
+      font-family: monospace;
+      word-break: break-all;
+      color: #2d3748;
+    }
+
+    .whitelist-item-meta {
+      font-size: 11px;
+      color: #a0522d;
+      margin-top: 2px;
+    }
+
+    .whitelist-remove {
+      background: none;
+      border: none;
+      color: #c05621;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      width: auto;
+    }
+
+    .whitelist-remove:hover {
+      background: #fed7aa;
+    }
+  </style>
+</head>
+<body>
+  <img class="logo-inline" src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.png" alt="Focus Bear" />
+
+  <div id="statusApp" class="status disconnected">
+    Connecting to Focus Bear app...
+  </div>
+
+  <details class="debug-section">
+    <summary>Debug Info</summary>
+    <div id="statusHost" class="status-small disconnected">
+      Connecting to native messaging host...
+    </div>
+  </details>
+
+  <div class="section">
+    <div class="section-title">Block List</div>
+    <div class="stats">
+      <span>Patterns: <strong id="count">0</strong></span>
+      <span>Last update: <span id="lastUpdate">Never</span></span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div id="blocklist" class="blocklist">
+      <div class="empty">No block patterns loaded</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Temporary Whitelist</div>
+    <div id="whitelist" class="blocklist">
+      <div class="empty">No temporary exemptions</div>
+    </div>
+  </div>
+
+  <button id="refresh">Refresh Blocklist</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>

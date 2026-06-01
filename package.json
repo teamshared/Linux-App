@@ -106,6 +106,7 @@
       "dist-react/**/*",
       "src/electron/**/*",
       "src/ui/**/*",
+      "src/extension-chrome/**/*",
       "public/**/*",
       "package.json"
     ],
@@ -130,6 +131,13 @@
       {
         "from": "src/extension",
         "to": "extension",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "src/extension-chrome",
+        "to": "extension-chrome",
         "filter": [
           "**/*"
         ]

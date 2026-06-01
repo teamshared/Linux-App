@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blocked by Focus Bear</title>
+    <link rel="icon" href="https://focus-bear.github.io/assets/focus-blocked/images/favicon.ico" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      
+      .container {
+        background: white;
+        border-radius: 24px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        max-width: 600px;
+        width: 100%;
+        padding: 60px 50px;
+        text-align: center;
+        animation: slideIn 0.4s ease-out;
+      }
+      
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      .logo {
+        width: 280px;
+        height: 100px;
+        margin: 0 auto 40px;
+      }
+      
+      .logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      
+      h1 {
+        font-size: 32px;
+        font-weight: 700;
+        color: #1a202c;
+        margin-bottom: 12px;
+        line-height: 1.2;
+      }
+      
+      .subtitle {
+        font-size: 18px;
+        color: #718096;
+        margin-bottom: 40px;
+        font-weight: 400;
+      }
+      
+      .block-info {
+        background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+        padding: 30px;
+        border-radius: 16px;
+        margin: 40px 0;
+      }
+      
+      .block-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      
+      .block-row:last-child {
+        margin-bottom: 0;
+      }
+      
+      .block-label {
+        font-size: 14px;
+        color: #744210;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      
+      .block-value {
+        background: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+        font-size: 15px;
+        color: #2d3748;
+        font-weight: 600;
+        word-break: break-all;
+        max-width: 400px;
+      }
+      
+      .stats {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.5);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 13px;
+        color: #744210;
+        font-weight: 500;
+      }
+      
+      .stats-icon {
+        font-size: 16px;
+      }
+      
+      .message {
+        font-size: 16px;
+        color: #4a5568;
+        line-height: 1.6;
+        margin-top: 30px;
+      }
+      
+      .tip {
+        margin-top: 40px;
+        padding: 20px;
+        background: #f7fafc;
+        border-radius: 12px;
+        border-left: 4px solid #667eea;
+      }
+      
+      .tip-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #667eea;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      
+      .tip-text {
+        font-size: 14px;
+        color: #4a5568;
+        line-height: 1.5;
+      }
+
+      .action-row {
+        margin-top: 28px;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      .action-btn {
+        flex: 1;
+        padding: 11px 16px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+        border: 2px solid #e2e8f0;
+        background: white;
+        color: #4a5568;
+      }
+
+      .action-btn:hover {
+        border-color: #667eea;
+        color: #667eea;
+      }
+
+      .action-btn.primary {
+        background: #ed8936;
+        border-color: #ed8936;
+        color: white;
+      }
+
+      .action-btn.primary:hover {
+        background: #dd6b20;
+        border-color: #dd6b20;
+        color: white;
+      }
+
+      /* Modal */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 100;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .modal-overlay.open {
+        display: flex;
+      }
+
+      .modal {
+        background: white;
+        border-radius: 16px;
+        padding: 28px;
+        width: 100%;
+        max-width: 480px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .modal-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1a202c;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        font-size: 20px;
+        color: #a0aec0;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 6px;
+        line-height: 1;
+      }
+
+      .modal-close:hover { background: #f7fafc; color: #4a5568; }
+
+      .reason-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .reason-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #a0aec0;
+      }
+
+      .reason-value {
+        font-family: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
+        font-size: 12px;
+        color: #2d3748;
+        word-break: break-all;
+        background: #f7fafc;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .duration-select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        font-size: 14px;
+        color: #4a5568;
+        background: white;
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234a5568' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+      }
+
+      .duration-select:focus { outline: none; border-color: #ed8936; }
+
+      .unblock-btn {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+
+      .unblock-btn:hover { opacity: 0.85; }
+      .unblock-btn.domain { background: #ed8936; color: white; }
+      .unblock-btn.exact  { background: #e2e8f0; color: #4a5568; }
+      .unblock-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      @media (max-width: 640px) {
+        .container {
+          padding: 40px 30px;
+        }
+        
+        .logo {
+          width: 220px;
+          height: 80px;
+          margin-bottom: 30px;
+        }
+        
+        h1 {
+          font-size: 26px;
+        }
+        
+        .subtitle {
+          font-size: 16px;
+        }
+        
+        .block-info {
+          padding: 20px;
+        }
+        
+        .block-row {
+          flex-direction: column;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="logo">
+        <picture>
+          <source
+            srcset="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg"
+            type="image/svg+xml"
+          />
+          <source
+            srcset="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.webp"
+            type="image/webp"
+          />
+          <img
+            src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.png"
+            alt="Focus Bear"
+          />
+        </picture>
+      </div>
+      
+      <h1>Site Blocked</h1>
+      <p class="subtitle" id="subtitle">This site is on your blocklist</p>
+      
+      <div class="block-info">
+        <div class="block-row">
+          <span class="block-label">Blocked</span>
+          <span class="block-value" id="blockValue">Loading...</span>
+        </div>
+        
+        <div id="statsContainer"></div>
+      </div>
+      
+      <p class="message" id="message">
+        Take a moment to refocus on what matters most.
+      </p>
+      
+      <div class="tip">
+        <div class="tip-title">
+          <span>💡</span>
+          <span>Productivity Tip</span>
+        </div>
+        <p class="tip-text" id="tipText">
+          Try the Pomodoro technique: 25 minutes of focused work, followed by a 5-minute break.
+        </p>
+      </div>
+
+      <div class="action-row">
+        <button class="action-btn" id="openReason">Why blocked?</button>
+        <button class="action-btn primary" id="openUnblock">Unblock temporarily</button>
+      </div>
+    </div>
+
+    <!-- Reason modal -->
+    <div class="modal-overlay" id="reasonModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="modal-title">Why was this blocked?</span>
+          <button class="modal-close" data-close="reasonModal">✕</button>
+        </div>
+        <div class="reason-row">
+          <span class="reason-label">Matched rule</span>
+          <span class="reason-value" id="reasonRule">—</span>
+        </div>
+        <div class="reason-row">
+          <span class="reason-label">Full URL</span>
+          <span class="reason-value" id="reasonUrl">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unblock modal -->
+    <div class="modal-overlay" id="unblockModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="modal-title">Unblock temporarily</span>
+          <button class="modal-close" data-close="unblockModal">✕</button>
+        </div>
+        <select class="duration-select" id="unblockDuration">
+          <option value="5">5 minutes</option>
+          <option value="10">10 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30" selected>30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="90">1 hour 30 minutes</option>
+        </select>
+        <button class="unblock-btn domain" id="unblockDomain">Unblock this domain</button>
+        <button class="unblock-btn exact" id="unblockExact">Unblock this exact URL</button>
+      </div>
+    </div>
+
+    <script src="blocked.js"></script>
+  </body>
+</html>
