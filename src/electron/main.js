@@ -241,6 +241,16 @@ function showExtensionWarning() {
     },
   });
   warningWindow.loadFile(join(__dirname, 'extension-warning.html'));
+  warningWindow.webContents.once('did-finish-load', () => {
+    if (!warningWindow) return;
+    warningWindow.webContents.executeJavaScript('document.querySelector(".card").getBoundingClientRect().height + 48')
+      .then(h => {
+        if (!warningWindow) return;
+        const [w] = warningWindow.getContentSize();
+        warningWindow.setContentSize(w, h);
+      })
+      .catch(() => {});
+  });
   warningWindow.on('closed', () => { warningWindow = null; }); // handles manual X click
 }
 
