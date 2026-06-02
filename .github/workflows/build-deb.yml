@@ -14,11 +14,12 @@
 #       embeds them correctly in the .deb control archive
 #   6.  Installs npm dependencies
 #   7.  Injects Auth0 secrets into .env so Vite can embed them at build time
-#   8.  Runs `npm run package:all` which:
+#   8.  Runs `npm run package:full` which:
 #         a. Builds the React frontend with Vite        → dist-react/
 #         b. Packages with electron-builder             → dist/
 #              AppImage  — universal, runs on any Linux without installing
 #              .deb      — Debian / Ubuntu / Mint; installs via `sudo dpkg -i`
+#              .rpm      — Fedora / RHEL / openSUSE;    installs via `sudo dnf install`
 #   9.  Uploads each artifact to the Actions run
 #
 # What the .deb package does after `sudo dpkg -i`:
@@ -104,6 +105,8 @@ jobs:
       # ----------------------------------------------------------
       # 5. System dependencies
       #    fakeroot — lets electron-builder build .deb without root
+      #    rpm      — provides rpmbuild, required by electron-builder
+      #               to assemble the .rpm package on an Ubuntu runner
       #    zip      — declared as a .deb runtime dep; the app uses it
       #               on first launch to create focusbear-extension.xpi
       #               so snap Firefox (XDG portal) can load the extension
@@ -112,15 +115,16 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y fakeroot zip
+          sudo apt-get install -y fakeroot rpm zip
 
       # ----------------------------------------------------------
       # 6. Make installer scripts executable
-      #    electron-builder embeds these into the .deb control archive;
-      #    they must be executable or dpkg will refuse to run them.
+      #    electron-builder embeds these into the .deb control archive
+      #    (postinst/prerm) and the .rpm spec file (rpm-postinst/rpm-prerm);
+      #    they must be executable or dpkg/rpm will refuse to run them.
       # ----------------------------------------------------------
       - name: Make installer scripts executable
-        run: chmod +x build/postinst build/prerm
+        run: chmod +x build/postinst build/prerm build/rpm-postinst build/rpm-prerm
 
       # ----------------------------------------------------------
       # 7. Install npm dependencies
@@ -152,10 +156,10 @@ jobs:
 
       # ----------------------------------------------------------
       # 10. Build and package
-      #     Produces: dist/*.AppImage  dist/*.deb
+      #     Produces: dist/*.AppImage  dist/*.deb  dist/*.rpm
       # ----------------------------------------------------------
       - name: Build and package
-        run: npm run package:all
+        run: npm run package:full
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -174,4 +178,11 @@ jobs:
         with:
           name: focusbear-linux-deb
           path: dist/*.deb
+          if-no-files-found: error
+
+      - name: Upload .rpm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusbear-linux-rpm
+          path: dist/*.rpm
           if-no-files-found: error

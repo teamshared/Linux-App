@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Preferences from './preferences.jsx';
+import UpdateNotification from './UpdateNotification.jsx';
 import Setup from './Setup.jsx';
 import { nativeAuthService } from '../services/nativeAuth.js';
 import { auth0Sync } from '../services/sync.js';
@@ -278,6 +279,7 @@ const App = function() {
   // Authenticated - show main app with preferences
   return (
     <div>
+      <UpdateNotification />
       {/* Auth status bar with cloud sync status */}
       <div style={{
         padding: '10px 20px',

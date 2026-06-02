@@ -25,11 +25,11 @@ let nativeHostClients = [];
 let currentBlocklist = [];
 let currentWhitelist = [];
 let warningWindow = null;
-const connectedBrowsers = new Set();   // browser id strings currently connected
-const socketBrowsers = new Map();      // socket → browser id
+const connectedBrowsers = new Set();
+const socketBrowsers = new Map();
 let pingMonitorActive = false;
 
-const socketPingTimes = new Map(); // socket → lastPingAt ms
+const socketPingTimes = new Map();
 let extensionWarningTimer = null;
 let extensionWarningActive = false;
 
@@ -415,7 +415,7 @@ app.on("ready", function(){
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
             webSecurity: false,
         },
-        devTools: true,
+        devTools: false,
     });
     tray = createTray(mainWindow)
 
