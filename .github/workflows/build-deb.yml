@@ -115,8 +115,8 @@ jobs:
           sudo apt-get install -y fakeroot rpm
 
       # ----------------------------------------------------------
-      # 5b. Download and bundle Node.js
-      #     Bundled into the package so no system nodejs dep is needed
+      # 5b. Download and bundle Node.js and system libraries
+      #     Bundled into the package so no system dependencies needed
       # ----------------------------------------------------------
       - name: Download and bundle Node.js
         run: |
@@ -135,6 +135,46 @@ jobs:
 
           echo "Node.js bundling complete"
           "${NODE_DIR}/node/bin/node" --version
+
+      - name: Download and bundle system libraries
+        run: |
+          LIB_DIR="build/lib-bundle"
+          mkdir -p "$LIB_DIR"
+
+          echo "Downloading system libraries..."
+          PACKAGES=(
+            "libgtk-3-0"
+            "libnotify4"
+            "libnss3"
+            "libxss1"
+            "libxtst6"
+            "xdg-utils"
+            "libatspi2.0-0"
+            "libuuid1"
+            "libsecret-1-0"
+          )
+
+          for pkg in "${PACKAGES[@]}"; do
+            echo "Downloading $pkg..."
+            apt-get download "$pkg" -o Dir::Cache::archives="$LIB_DIR" 2>&1 | grep -v "^Get:" || true
+          done
+
+          echo "Extracting library files..."
+          cd "$LIB_DIR"
+
+          for deb in *.deb; do
+            [ -f "$deb" ] || continue
+            echo "Extracting $deb..."
+            ar x "$deb" data.tar.xz 2>/dev/null || ar x "$deb" data.tar.gz 2>/dev/null || true
+          done
+
+          for archive in data.tar.*; do
+            [ -f "$archive" ] || continue
+            tar -xf "$archive"
+          done
+
+          rm -f *.deb data.tar.* control.tar.* debian-binary
+          echo "Library bundling complete"
 
       # ----------------------------------------------------------
       # 6. Make installer scripts executable
