@@ -51,8 +51,15 @@ const s = {
     transition: 'background 0.2s',
   }),
   emoji: {
-    fontSize: '36px',
     marginBottom: '16px',
+  },
+  logo: {
+    width: '280px',
+    height: '100px',
+    objectFit: 'contain',
+    background: 'white',
+    borderRadius: '16px',
+    padding: '12px 24px',
   },
   title: {
     fontSize: '22px',
@@ -230,7 +237,13 @@ export default function Setup({ onComplete }) {
             <div style={s.dot(true)} />
             <div style={s.dot(false)} />
           </div>
-          <div style={s.emoji}>🐻</div>
+          <div style={s.emoji}>
+            <picture>
+              <source srcSet="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg" type="image/svg+xml" />
+              <source srcSet="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.webp" type="image/webp" />
+              <img src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.png" alt="Focus Bear" style={s.logo} />
+            </picture>
+          </div>
           <div style={s.title}>Welcome to Focus Bear</div>
           <div style={s.subtitle}>
             Which browser do you use? We'll help you install the blocking extension for it.
