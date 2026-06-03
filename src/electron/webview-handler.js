@@ -66,7 +66,7 @@ export function createWebView(config) {
 
     webView.webContents.loadURL(url);
 
-    webView.webContents.openDevTools({ mode: 'detach' });
+//    webView.webContents.openDevTools({ mode: 'detach' });
 
     webViews.set(id, webView);
     return webView;
