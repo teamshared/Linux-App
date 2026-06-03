@@ -523,7 +523,7 @@ app.on("ready", function(){
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
             webSecurity: false,
         },
-        devTools: true,
+        devTools: false,
     });
     tray = createTray(mainWindow)
 
