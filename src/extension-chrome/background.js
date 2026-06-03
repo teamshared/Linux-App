@@ -59,7 +59,6 @@ async function updateDNRRules() {
     });
   }
 
-  // Redirect rules for blocklist (priority 1)
   // All rules use regexFilter so \0 in regexSubstitution = full matched URL
   const MAX_RULES = 1000 - activeWhitelist.length;
   for (const pattern of blocklist.slice(0, MAX_RULES)) {
@@ -81,7 +80,7 @@ async function updateDNRRules() {
         resourceTypes: ['main_frame']
       }
     });
-    void reason; // value tracked by blocklist lookup in blocked.js
+    void reason;
   }
 
   try {
@@ -175,7 +174,6 @@ function connectToNativeHost() {
           isConnected = true;
           isConnectedToApp = message.connectedToApp || false;
           log('Pong received, app connected: ' + isConnectedToApp);
-          port.postMessage({ type: 'GET_WHITELIST' });
           break;
 
         case 'ERROR':
@@ -191,32 +189,15 @@ function connectToNativeHost() {
       if (chrome.runtime.lastError) {
         log('Disconnect error: ' + chrome.runtime.lastError.message);
       }
-      setTimeout(connectToNativeHost, 5000);
+      // Do not retry here — SW suspension closes the port normally.
+      // The 'ping' alarm wakes the SW every 60s and reconnects if port is gone.
     });
 
     port.postMessage({ type: 'PING', browser: BROWSER_ID });
-    setTimeout(() => port?.postMessage({ type: 'GET_BLOCKLIST' }), 100);
 
   } catch (err) {
     log('Connect failed: ' + err.message);
     isConnected = false;
-    setTimeout(connectToNativeHost, 5000);
-  }
-}
-
-// ── Offscreen keepalive ───────────────────────────────────────────────────────
-
-async function ensureOffscreenDocument() {
-  try {
-    if (await chrome.offscreen.hasDocument?.()) return;
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['BLOBS'],
-      justification: 'Keepalive pings to keep service worker alive for native messaging'
-    });
-  } catch (err) {
-    // Throws if document already exists in older Chrome without hasDocument()
-    if (!err.message?.includes('Only a single offscreen')) log('Offscreen error: ' + err.message);
   }
 }
 
@@ -232,7 +213,6 @@ async function restoreState() {
 chrome.runtime.onInstalled.addListener(async () => {
   await restoreState();
   connectToNativeHost();
-  ensureOffscreenDocument();
   chrome.alarms.create('pruneWhitelist', { periodInMinutes: 1 });
   chrome.alarms.create('ping', { periodInMinutes: 1 });
 });
@@ -240,19 +220,16 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onStartup.addListener(async () => {
   await restoreState();
   connectToNativeHost();
-  ensureOffscreenDocument();
 });
 
-// SW wakes cold on every message/alarm — restore state and reconnect each time.
+// SW wakes cold on every alarm — restore state and reconnect if port is gone.
 // onInstalled/onStartup only fire once; this covers all subsequent wakes.
 restoreState().then(() => {
   if (!port) connectToNativeHost();
-  ensureOffscreenDocument();
   // Ensure ping alarm survives SW restarts (alarms persist but recreating is idempotent)
   chrome.alarms.get('ping', alarm => { if (!alarm) chrome.alarms.create('ping', { periodInMinutes: 1 }); });
 });
 
-// Re-connect on wake if port is gone
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'pruneWhitelist') {
     const before = whitelist.length;
@@ -261,8 +238,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       notifyWhitelistUpdate();
       await updateDNRRules();
 
-      // Reload any open tabs that matched expired whitelist entries
-      const expired = whitelist.filter(e => e.expiresAt <= Date.now()); // already pruned, so check storage delta
       const tabs = await chrome.tabs.query({});
       for (const tab of tabs) {
         if (!tab.url) continue;
@@ -274,7 +249,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
   if (alarm.name === 'ping') {
     if (!port || !isConnected) connectToNativeHost();
-    else port.postMessage({ type: 'PING', browser: BROWSER_ID });
   }
 });
 
@@ -314,10 +288,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     notifyWhitelistUpdate();
     updateDNRRules();
     sendResponse({ success: true });
-
-  } else if (message.type === 'KEEPALIVE') {
-    if (port && isConnected) port.postMessage({ type: 'PING', browser: BROWSER_ID });
-    sendResponse({ alive: true });
 
   } else if (message.type === 'REMOVE_WHITELIST') {
     whitelist = pruneWhitelist().filter(e => e.pattern !== message.pattern);

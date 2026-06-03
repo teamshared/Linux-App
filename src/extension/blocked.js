@@ -1,8 +1,3 @@
-/**
- * Blocked page script - displays blocking information
- */
-
-// Productivity tips to rotate
 const tips = [
   "Try the Pomodoro technique: 25 minutes of focused work, followed by a 5-minute break.",
   "Close unnecessary tabs and apps to minimize distractions.",
@@ -15,7 +10,6 @@ const tips = [
 ];
 
 document.addEventListener('DOMContentLoaded', async function() {
-  // Get blocking info from URL parameters
   const urlParams = new URLSearchParams(window.location.search);
   const blockedUrl = urlParams.get('url') || 'Unknown URL';
   const matchedValue = urlParams.get('value') || urlParams.get('pattern') || 'Unknown pattern';
@@ -27,16 +21,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     reason: blockType
   });
   
-  // Update the matched value display
   const blockValueEl = document.getElementById('blockValue');
-  if (blockValueEl) {
-    blockValueEl.textContent = matchedValue;
-  }
-  
-  // Set page title
+  if (blockValueEl) blockValueEl.textContent = matchedValue;
+
   document.title = `Blocked: ${blockedUrl}`;
-  
-  // Customize subtitle and message based on block type
+
   const subtitleEl = document.getElementById('subtitle');
   const messageEl = document.getElementById('message');
   
@@ -63,7 +52,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   }
   
-  // Get and display statistics
   try {
     const result = await browser.storage.local.get(['blocklist']);
     const blocklist = result.blocklist || [];
@@ -84,19 +72,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.error('[Blocked Page] Error loading statistics:', error);
   }
   
-  // Show a random productivity tip
   const tipTextEl = document.getElementById('tipText');
-  if (tipTextEl) {
-    const randomTip = tips[Math.floor(Math.random() * tips.length)];
-    tipTextEl.textContent = randomTip;
-  }
+  if (tipTextEl) tipTextEl.textContent = tips[Math.floor(Math.random() * tips.length)];
   
   const reasonRule = document.getElementById('reasonRule');
   const reasonUrl = document.getElementById('reasonUrl');
   if (reasonRule) reasonRule.textContent = `${matchedValue} (${blockType})`;
   if (reasonUrl) reasonUrl.textContent = blockedUrl;
 
-  // Modal open/close
   const openModal = id => document.getElementById(id)?.classList.add('open');
   const closeModal = id => document.getElementById(id)?.classList.remove('open');
 
@@ -115,7 +98,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   console.log('[Blocked Page] Successfully displayed');
 
-  // Whitelist buttons
   const domainBtn = document.getElementById('unblockDomain');
   const exactBtn = document.getElementById('unblockExact');
   const durationSelect = document.getElementById('unblockDuration');

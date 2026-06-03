@@ -21,19 +21,18 @@ dotenv.config();
 
 const execFileAsync = promisify(execFile);
 
-// Unix domain socket server for native messaging
 const SOCKET_PATH = '/tmp/focusbear.sock';
 let socketServer = null;
 const socketClients = new Map();       // socket → {browser: string|null, lastPing: number}
 let currentBlocklist = [];
 let currentWhitelist = [];
 let warningWindow = null;
-const connectedBrowsers = new Set();   // browser id strings that have sent PING
-const browserLastConnected = new Map(); // browser id → timestamp of most recent connection
+const connectedBrowsers = new Set();
+const browserLastConnected = new Map();
 let pingMonitorActive = false;
 let extensionWarningTimer = null;
 let extensionWarningActive = false;
-let warningBrowserId = null; // browser that triggered the current warning
+let warningBrowserId = null;
 
 let selectedBrowsers = ['firefox']; // persisted from setup; updated via applySettings
 
@@ -77,12 +76,9 @@ async function saveWhitelistToDisk(entries) {
 }
 
 async function startSocketServer() {
-  // Remove existing socket file if it exists
   try {
     await unlink(SOCKET_PATH);
-  } catch (error) {
-    // Ignore if file doesn't exist
-  }
+  } catch { /* stale socket, ignore */ }
 
   socketServer = createServer((socket) => {
     console.log('[Socket] Native host connected');
@@ -113,12 +109,11 @@ async function startSocketServer() {
           const browserTag = message.browser ? ` (${message.browser})` : '';
           console.log(`[Socket] Received from native host: ${message.type}${browserTag}`);
 
-          // Any traffic from native host means extension is alive
           if (socketClients.has(socket)) socketClients.get(socket).lastPing = Date.now();
 
           if (message.type === 'NATIVE_HOST_CONNECTED') {
             if (message.browser) {
-              // Evict stale sockets already claiming this browser (old host didn't clean up)
+              // Evict stale socket for this browser — old host may not have cleaned up
               for (const [s, c] of socketClients) {
                 if (s !== socket && c.browser === message.browser) {
                   console.log(`[Socket] Evicting stale ${message.browser} socket (new host connected)`);
@@ -173,12 +168,11 @@ async function startSocketServer() {
       if (browser && ![...socketClients.values()].some(c => c.browser === browser)) {
         connectedBrowsers.delete(browser);
       }
-      // Socket closed but browser still running → extension crashed/disabled (not a normal browser close).
-      // Chrome MV3 service workers suspend normally and reconnect within ~60s via alarm — use long grace.
-      // Firefox MV2 background is persistent — short grace is fine.
+      // Chrome: SW suspension is normal — alarm reconnects within 60s. 70s grace avoids false positives.
+      // Firefox: MV2 background is persistent, so disconnect means crash/disable. 5s grace.
       if (pingMonitorActive && browser) {
         const closedBrowser = browser;
-        const gracePeriod = closedBrowser === 'firefox' ? 5000 : 90000;
+        const gracePeriod = closedBrowser === 'firefox' ? 5000 : 70000;
         setTimeout(async () => {
           // Cancel if browser already reconnected during grace period
           if ([...socketClients.values()].some(c => c.browser === closedBrowser)) return;
@@ -205,7 +199,6 @@ async function startSocketServer() {
   });
 }
 
-// Broadcast blocklist update to all connected native hosts
 function broadcastBlocklistUpdate(blocklist) {
   currentBlocklist = blocklist;
 
@@ -240,7 +233,6 @@ async function isBrowserRunning(browserId) {
   return false;
 }
 
-// browserId: kill only that browser's processes.
 async function killBrowsers(browserId) {
   const targets = BROWSER_KILL_TARGETS[browserId] || [];
   console.log(`[PingMonitor] Killing ${browserId} (${targets.join(', ')})`);
@@ -310,38 +302,25 @@ function startPingMonitor() {
   if (pingMonitorActive) return;
   pingMonitorActive = true;
 
-  // Firefox MV2 pings every 10s — 20s threshold catches hung extensions.
-  // Chrome MV3 alarms fire every 60s (Chrome minimum) — 90s threshold avoids false positives.
-  const PING_SILENCE_THRESHOLD = { firefox: 20000 };
-  const DEFAULT_PING_THRESHOLD = 90000;
-
+  // Firefox MV2 background is persistent — detect hung connections via ping silence.
+  // Chrome MV3 SWs sleep and reconnect via alarm; socket-close grace handles disconnect detection.
   setInterval(async () => {
     if (extensionWarningActive) return;
     const now = Date.now();
-    // Aggregate per-browser: use the freshest lastPing across all sockets for that browser.
-    // A stale zombie socket must not trigger a false positive if a fresh socket also exists.
-    const freshestByBrowser = new Map();
     for (const [, client] of socketClients) {
-      if (!client.browser) continue;
-      const prev = freshestByBrowser.get(client.browser) ?? 0;
-      if (client.lastPing > prev) freshestByBrowser.set(client.browser, client.lastPing);
-    }
-    for (const [browserId, lastPing] of freshestByBrowser) {
-      const threshold = PING_SILENCE_THRESHOLD[browserId] ?? DEFAULT_PING_THRESHOLD;
-      if (now - lastPing > threshold) {
-        console.log(`[PingMonitor] No ping for ${threshold}ms (browser: ${browserId}), checking`);
-        if (await isBrowserRunning(browserId)) {
-          showExtensionWarning(browserId);
-          break;
-        }
+      if (client.browser !== 'firefox') continue;
+      if (now - client.lastPing > 20000 && await isBrowserRunning('firefox')) {
+        showExtensionWarning('firefox');
+        break;
       }
     }
   }, 5000);
 
-  // Detect browser running without extension — checked on startup and every 30s after.
-  // Chrome MV3 SWs suspend normally — give them 90s to reconnect before warning.
+  // Detect browser running without extension ever connecting (startup / disabled-before-launch).
+  // Firefox: 5s grace (persistent background connects immediately).
+  // Chrome: 70s grace (alarm fires within 60s if extension enabled, then reconnects).
   const BROWSER_SCAN_GRACE = { firefox: 5000 };
-  const DEFAULT_SCAN_GRACE = 90000;
+  const DEFAULT_SCAN_GRACE = 70000;
 
   const browserScan = async () => {
     if (extensionWarningActive) return;
@@ -351,15 +330,15 @@ function startPingMonitor() {
       if (!await isBrowserRunning(browserId)) continue;
       const grace = BROWSER_SCAN_GRACE[browserId] ?? DEFAULT_SCAN_GRACE;
       const lastSeen = browserLastConnected.get(browserId) ?? 0;
-      if (now - lastSeen < grace) continue; // recently connected — SW may just be waking
+      if (now - lastSeen < grace) continue;
       console.log(`[BrowserScan] ${browserId} running without extension for >${grace}ms — showing warning`);
       showExtensionWarning(browserId);
       break;
     }
   };
 
-  setTimeout(browserScan, 20000); // initial check — 20s grace for extension to connect on startup
-  setInterval(browserScan, 30000);
+  setTimeout(browserScan, 20000); // initial check — Firefox connects immediately; Chrome needs ~60s for alarm
+  setInterval(browserScan, 90000);
 }
 
 // Install native messaging host on startup — runs in-process, no subprocess needed.
@@ -378,13 +357,11 @@ async function installNativeMessaging() {
       ? join(process.resourcesPath, 'extension-chrome')
       : join(__dirname, '..', 'extension-chrome');
 
-    // Copy host.js + package.json into home so snap Firefox's sandboxed process can read them
     const localNativeDir = join(homedir(), '.local', 'share', 'focusbear', 'native-messaging');
     await fs.mkdir(localNativeDir, { recursive: true });
     await fs.copyFile(join(nativeSrcDir, 'host.js'),     join(localNativeDir, 'host.js'));
     await fs.copyFile(join(nativeSrcDir, 'package.json'), join(localNativeDir, 'package.json'));
 
-    // Copy extension files into home so snap Firefox can load them from $HOME
     const localExtDir = join(homedir(), '.local', 'share', 'focusbear', 'extension');
     await fs.mkdir(localExtDir, { recursive: true });
     for (const f of await fs.readdir(extensionSrcDir)) {

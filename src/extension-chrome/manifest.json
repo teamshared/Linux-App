@@ -11,8 +11,7 @@
     "storage",
     "tabs",
     "declarativeNetRequest",
-    "alarms",
-    "offscreen"
+    "alarms"
   ],
   "host_permissions": ["<all_urls>"],
 

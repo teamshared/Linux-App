@@ -1,7 +1,3 @@
-/**
- * Popup script - displays blocklist from storage
- */
-
 function log(message) {
   console.log('[Popup]', message);
 }
@@ -48,12 +44,10 @@ function renderWhitelist(entries) {
 }
 
 function updateUI() {
-  // Get status from background script
   browser.runtime.sendMessage({ type: 'GET_STATUS' }).then(response => {
     const statusHostDiv = document.getElementById('statusHost');
     const statusAppDiv = document.getElementById('statusApp');
 
-    // Native messaging host connection (in debug section)
     if (statusHostDiv) {
       if (response.connected) {
         statusHostDiv.className = 'status-small connected';
@@ -64,13 +58,11 @@ function updateUI() {
       }
     }
 
-    // Electron app connection (main display)
     if (statusAppDiv) {
       if (response.connectedToApp) {
         statusAppDiv.className = 'status connected';
         statusAppDiv.textContent = 'Connected to Focus Bear app';
       } else if (response.connected) {
-        // Connected to host but not to app
         statusAppDiv.className = 'status warning';
         statusAppDiv.textContent = 'App not running (using cached data)';
       } else {
@@ -80,7 +72,6 @@ function updateUI() {
     }
   });
 
-  // Get blocklist from storage
   browser.storage.local.get(['blocklist', 'lastUpdate']).then(result => {
     const blocklist = result.blocklist || [];
     const lastUpdate = result.lastUpdate;
@@ -112,13 +103,9 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Refresh button handler
 document.getElementById('refresh').addEventListener('click', () => {
-  log('Refresh button clicked');
   browser.runtime.sendMessage({ type: 'REFRESH_BLOCKLIST' }).then(response => {
     if (response.success) {
-      log('Refresh request sent');
-      // UI will update when storage changes
       setTimeout(updateUI, 500);
     } else {
       log('Refresh failed:', response.error);
@@ -127,18 +114,11 @@ document.getElementById('refresh').addEventListener('click', () => {
   });
 });
 
-// Listen for storage changes
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.blocklist || changes.whitelist)) {
-    log('Storage changed, updating UI');
-    updateUI();
-  }
+  if (area === 'local' && (changes.blocklist || changes.whitelist)) updateUI();
 });
 
-// Initial update
 updateUI();
-
-// Refresh every 2 seconds
 setInterval(updateUI, 2000);
 
 log('Popup loaded');

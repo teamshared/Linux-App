@@ -1,7 +1,4 @@
-/**
- * Blocked page script - Chrome MV3 version
- * URL is passed in hash (#URL) instead of query params to avoid & encoding issues with DNR regexSubstitution
- */
+// URL in hash (#URL) not query params — avoids & encoding issues with DNR regexSubstitution
 
 const browser = globalThis.browser ?? globalThis.chrome;
 
