@@ -43,7 +43,7 @@ fi
 # Wrapper script at the path Firefox expects (set in the manifest)
 cat > "$NATIVE_HOST_DEST" << EOF
 #!/bin/sh
-exec node "$HOST_JS" "\$@"
+exec "${APP_DIR}/resources/node/bin/node" "${APP_DIR}/resources/native-messaging/host.js" "\$@"
 EOF
 chmod 755 "$NATIVE_HOST_DEST"
 
