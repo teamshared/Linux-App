@@ -127,7 +127,13 @@ echo ""
 
 # If all dependencies are installed, we're done
 if [ ${#MISSING[@]} -eq 0 ]; then
-    echo -e "${GREEN}All dependencies are installed!${NC}"
+    echo -e "${GREEN}✓ All dependencies are installed!${NC}"
+    echo ""
+    echo "Installed packages (${#INSTALLED[@]}):"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    for pkg in "${INSTALLED[@]}"; do
+        echo "  ✓ $pkg"
+    done
     echo ""
     exit 0
 fi
