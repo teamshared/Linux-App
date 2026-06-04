@@ -6,6 +6,170 @@ NATIVE_HOST_DEST="/usr/local/bin/focusbear-native-host"
 FIREFOX_MANIFEST_DIR="/usr/lib/mozilla/native-messaging-hosts"
 MANIFEST_NAME="com.focusbear.native_host.json"
 
+# ── Dependency Checker ───────────────────────────────────────────────────────
+# Check for required dependencies and prompt to install if missing
+check_and_install_dependencies() {
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║          Focus Bear - Dependency Checker                       ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Detect package manager
+    if command -v apt-get &> /dev/null; then
+        PKG_MANAGER="apt"
+        INSTALL_CMD="apt-get install -y"
+        UPDATE_CMD="apt-get update"
+        # Debian/Ubuntu packages for Electron app
+        PACKAGES=(
+            "python3"
+            "nodejs"
+            "zip"
+            "libgtk-3-0"
+            "libglib2.0-0"
+            "libx11-6"
+            "libdbus-1-3"
+            "libfontconfig1"
+            "libfreetype6"
+            "libnotify4"
+            "libnss3"
+            "libxss1"
+            "libxtst6"
+            "xdg-utils"
+            "libatspi2.0-0"
+            "libuuid1"
+            "libsecret-1-0"
+        )
+    elif command -v dnf &> /dev/null; then
+        PKG_MANAGER="dnf"
+        INSTALL_CMD="dnf install -y"
+        UPDATE_CMD="dnf check-update || true"
+        # Fedora/RHEL packages for Electron app
+        PACKAGES=(
+            "python3"
+            "nodejs"
+            "zip"
+            "gtk3"
+            "glib2"
+            "libX11"
+            "dbus"
+            "fontconfig"
+            "freetype"
+            "libnotify"
+            "nss"
+            "libXss"
+            "libXtst"
+            "xdg-utils"
+            "at-spi2-core"
+            "util-linux"
+            "libsecret"
+        )
+    elif command -v zypper &> /dev/null; then
+        PKG_MANAGER="zypper"
+        INSTALL_CMD="zypper install -y"
+        UPDATE_CMD="zypper refresh || true"
+        # openSUSE packages for Electron app
+        PACKAGES=(
+            "python3"
+            "nodejs"
+            "zip"
+            "gtk3"
+            "glib2"
+            "libX11-6"
+            "dbus-1"
+            "fontconfig"
+            "freetype2"
+            "libnotify1"
+            "mozilla-nss"
+            "libxss1"
+            "libXtst6"
+            "xdg-utils"
+            "at-spi2-core"
+            "util-linux"
+            "libsecret-1-0"
+        )
+    elif command -v pacman &> /dev/null; then
+        PKG_MANAGER="pacman"
+        INSTALL_CMD="pacman -S --noconfirm"
+        UPDATE_CMD="pacman -Sy"
+        # Arch Linux packages for Electron app
+        PACKAGES=(
+            "python"
+            "nodejs"
+            "zip"
+            "gtk3"
+            "glib2"
+            "libx11"
+            "dbus"
+            "fontconfig"
+            "freetype2"
+            "libnotify"
+            "nss"
+            "libxss"
+            "libxtst"
+            "xdg-utils"
+            "at-spi2-core"
+            "util-linux"
+            "libsecret"
+        )
+    else
+        echo "Warning: No supported package manager found (apt, dnf, zypper, pacman)"
+        echo "Please install dependencies manually if the app doesn't work."
+        return 0
+    fi
+
+    echo "Detected package manager: $PKG_MANAGER"
+    echo ""
+
+    # Check which packages are missing
+    MISSING=()
+    for pkg in "${PACKAGES[@]}"; do
+        if ! $INSTALL_CMD --dry-run "$pkg" &>/dev/null 2>&1; then
+            MISSING+=("$pkg")
+        fi
+    done
+
+    if [ ${#MISSING[@]} -eq 0 ]; then
+        echo "✓ All dependencies are already installed"
+        echo ""
+        return 0
+    fi
+
+    echo "⚠ Found missing dependencies: ${#MISSING[@]}"
+    echo ""
+    for pkg in "${MISSING[@]}"; do
+        echo "  - $pkg"
+    done
+    echo ""
+
+    read -p "Install missing dependencies now? (requires sudo) [Y/n] " -r -t 30 || REPLY="Y"
+    echo ""
+
+    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+        echo "Updating package manager..."
+        $UPDATE_CMD || true
+
+        echo "Installing dependencies..."
+        if $INSTALL_CMD "${MISSING[@]}"; then
+            echo "✓ Dependencies installed successfully!"
+            echo ""
+        else
+            echo "✗ Failed to install some dependencies"
+            echo "You can install them manually with:"
+            echo "  sudo $INSTALL_CMD ${MISSING[@]}"
+            echo ""
+        fi
+    else
+        echo "Skipped dependency installation"
+        echo "You can install them later with:"
+        echo "  sudo $INSTALL_CMD ${MISSING[@]}"
+        echo ""
+    fi
+}
+
+# Run dependency checker
+check_and_install_dependencies
+
 # chrome-sandbox must be SUID root for Electron's process sandbox to work
 chmod 4755 "${APP_DIR}/chrome-sandbox" || true
 
