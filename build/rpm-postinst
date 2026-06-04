@@ -164,7 +164,7 @@ fi
 
 cat > "$NATIVE_HOST_DEST" << EOF
 #!/bin/sh
-exec "${APP_DIR}/resources/node/bin/node" "${APP_DIR}/resources/native-messaging/host.js" "\$@"
+exec node "$HOST_JS" "\$@"
 EOF
 chmod 755 "$NATIVE_HOST_DEST"
 
