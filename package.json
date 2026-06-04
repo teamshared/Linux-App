@@ -80,20 +80,12 @@
       "executableName": "focusbear"
     },
     "deb": {
-      "depends": [
-        "python3",
-        "nodejs",
-        "zip"
-      ],
+      "depends": [],
       "afterInstall": "build/postinst",
       "afterRemove": "build/prerm"
     },
     "rpm": {
-      "depends": [
-        "python3",
-        "nodejs",
-        "zip"
-      ],
+      "depends": [],
       "afterInstall": "build/rpm-postinst",
       "afterRemove": "build/rpm-prerm"
     },
@@ -140,6 +132,27 @@
       {
         "from": "build/focusbear.service",
         "to": "focusbear.service"
+      },
+      {
+        "from": "build/node-bundle/node",
+        "to": "node",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/lib-bundle/usr/lib/x86_64-linux-gnu",
+        "to": "lib",
+        "filter": [
+          "*.so*"
+        ]
+      },
+      {
+        "from": "build/lib-bundle/usr/lib",
+        "to": "lib",
+        "filter": [
+          "*.so*"
+        ]
       }
     ],
     "directories": {

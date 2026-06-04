@@ -139,6 +139,7 @@ chmod 4755 "${APP_DIR}/chrome-sandbox" || true
 # the unprivileged_userns AppArmor profile on some kernels.
 cat > /usr/bin/focusbear << 'WRAPPER'
 #!/bin/sh
+export LD_LIBRARY_PATH="/opt/Focus Bear/resources/lib:$LD_LIBRARY_PATH"
 exec "/opt/Focus Bear/focusbear" --no-sandbox "$@"
 WRAPPER
 chmod 755 /usr/bin/focusbear
@@ -164,7 +165,7 @@ fi
 
 cat > "$NATIVE_HOST_DEST" << EOF
 #!/bin/sh
-exec node "$HOST_JS" "\$@"
+exec "${APP_DIR}/resources/node/bin/node" "${APP_DIR}/resources/native-messaging/host.js" "\$@"
 EOF
 chmod 755 "$NATIVE_HOST_DEST"
 

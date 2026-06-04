@@ -27,7 +27,7 @@
 #     • Sets chrome-sandbox SUID so Electron's process sandbox works
 #     • Creates /usr/bin/focusbear symlink so the command is on PATH
 #     • Refreshes the desktop application database
-#     • Writes /usr/local/bin/focusbear-native-host (wrapper → packaged host.js)
+#     • Writes /usr/local/bin/focusbear-native-host (wrapper → bundled node + packaged host.js)
 #     • Installs system-wide Firefox native messaging manifest
 #       → /usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json
 #   prerm (runs as root on uninstall):
@@ -48,6 +48,7 @@
 #   resources/native-messaging/  — host.js, package.json, install.js, manifest.json
 #   resources/extension/         — all Firefox extension files
 #   resources/python/            — Python helper scripts
+#   resources/node/              — Node.js runtime (downloaded in GitHub Actions)
 #
 # GITHUB_TOKEN is provided automatically by GitHub Actions; no setup needed.
 # ============================================================
@@ -107,15 +108,73 @@ jobs:
       #    fakeroot — lets electron-builder build .deb without root
       #    rpm      — provides rpmbuild, required by electron-builder
       #               to assemble the .rpm package on an Ubuntu runner
-      #    zip      — declared as a .deb runtime dep; the app uses it
-      #               on first launch to create focusbear-extension.xpi
-      #               so snap Firefox (XDG portal) can load the extension
-      #               from a single file instead of a directory
       # ----------------------------------------------------------
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y fakeroot rpm zip
+          sudo apt-get install -y fakeroot rpm
+
+      # ----------------------------------------------------------
+      # 5b. Download and bundle Node.js and system libraries
+      #     Bundled into the package so no system dependencies needed
+      # ----------------------------------------------------------
+      - name: Download and bundle Node.js
+        run: |
+          NODE_VERSION="v22.22.2"
+          NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz"
+          NODE_DIR="build/node-bundle"
+          NODE_ARCHIVE="${NODE_DIR}/node-${NODE_VERSION}-linux-x64.tar.xz"
+
+          mkdir -p "$NODE_DIR"
+          echo "Downloading Node.js ${NODE_VERSION}..."
+          curl -L "$NODE_URL" -o "$NODE_ARCHIVE"
+
+          echo "Extracting Node.js..."
+          mkdir -p "${NODE_DIR}/node"
+          tar -xf "$NODE_ARCHIVE" -C "${NODE_DIR}/node" --strip-components=1
+
+          echo "Node.js bundling complete"
+          "${NODE_DIR}/node/bin/node" --version
+
+      - name: Download and bundle system libraries
+        run: |
+          LIB_DIR="build/lib-bundle"
+          mkdir -p "$LIB_DIR"
+
+          echo "Downloading system libraries..."
+          PACKAGES=(
+            "libgtk-3-0"
+            "libnotify4"
+            "libnss3"
+            "libxss1"
+            "libxtst6"
+            "xdg-utils"
+            "libatspi2.0-0"
+            "libuuid1"
+            "libsecret-1-0"
+          )
+
+          for pkg in "${PACKAGES[@]}"; do
+            echo "Downloading $pkg..."
+            apt-get download "$pkg" -o Dir::Cache::archives="$LIB_DIR" 2>&1 | grep -v "^Get:" || true
+          done
+
+          echo "Extracting library files..."
+          cd "$LIB_DIR"
+
+          for deb in *.deb; do
+            [ -f "$deb" ] || continue
+            echo "Extracting $deb..."
+            ar x "$deb" data.tar.xz 2>/dev/null || ar x "$deb" data.tar.gz 2>/dev/null || true
+          done
+
+          for archive in data.tar.*; do
+            [ -f "$archive" ] || continue
+            tar -xf "$archive"
+          done
+
+          rm -f *.deb data.tar.* control.tar.* debian-binary
+          echo "Library bundling complete"
 
       # ----------------------------------------------------------
       # 6. Make installer scripts executable
