@@ -139,20 +139,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "build/lib-bundle/usr/lib/x86_64-linux-gnu",
-        "to": "lib",
-        "filter": [
-          "*.so*"
-        ]
-      },
-      {
-        "from": "build/lib-bundle/usr/lib",
-        "to": "lib",
-        "filter": [
-          "*.so*"
-        ]
       }
     ],
     "directories": {

@@ -180,7 +180,6 @@ chmod 4755 "${APP_DIR}/chrome-sandbox" || true
 # unprivileged_userns profile (sys_admin capability) on this kernel.
 cat > /usr/bin/focusbear << 'WRAPPER'
 #!/bin/sh
-export LD_LIBRARY_PATH="/opt/Focus Bear/resources/lib:$LD_LIBRARY_PATH"
 exec "/opt/Focus Bear/focusbear" --no-sandbox "$@"
 WRAPPER
 chmod 755 /usr/bin/focusbear
