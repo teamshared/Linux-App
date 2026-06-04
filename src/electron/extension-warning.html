@@ -14,7 +14,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       padding: 24px;
     }
 
@@ -28,7 +28,15 @@
       max-width: 440px;
     }
 
-    .icon { font-size: 40px; margin-bottom: 16px; }
+    .icon { margin-bottom: 20px; }
+    .icon img {
+      width: 280px;
+      height: 100px;
+      object-fit: contain;
+      background: white;
+      border-radius: 16px;
+      padding: 12px 24px;
+    }
 
     h1 {
       font-size: 18px;
@@ -75,7 +83,13 @@
 </head>
 <body>
   <div class="card">
-    <div class="icon">🐻</div>
+    <div class="icon">
+      <picture>
+        <source srcset="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.svg" type="image/svg+xml" />
+        <source srcset="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.webp" type="image/webp" />
+        <img src="https://focus-bear.github.io/assets/focus-blocked/images/FocusBearLogo.png" alt="Focus Bear" />
+      </picture>
+    </div>
     <h1>Extension Disconnected</h1>
     <p>The Focus Bear Firefox extension is not active.<br>Firefox will be closed to protect your focus session.</p>
     <div class="countdown" id="countdown">30</div>
