@@ -1,7 +1,3 @@
-/**
- * Background script - handles native messaging connection
- */
-
 let port = null;
 let blocklist = [];
 let whitelist = []; // { pattern, type: 'domain'|'exact', expiresAt }
@@ -10,15 +6,13 @@ let isConnectedToApp = false;
 
 const WHITELIST_DURATION_MS = 30 * 60 * 1000;
 
-// Agreed-upon browser identifier sent in every PING so Electron knows which browser this is.
-// Add a new string here when adding support for a new browser.
+// Sent in every PING so Electron knows which browser to kill if extension goes missing.
 const BROWSER_ID = (() => {
   if (typeof browser !== 'undefined' && browser.runtime?.getBrowserInfo) return 'firefox';
   if (navigator.userAgent.includes('Chrome')) return 'chrome';
   return 'unknown';
 })();
 
-// Load persisted state on startup
 browser.storage.local.get(['whitelist', 'blocklist']).then(result => {
   whitelist = (result.whitelist || []).filter(e => e.expiresAt > Date.now());
   browser.storage.local.set({ whitelist });
@@ -44,11 +38,44 @@ function isWhitelisted(url) {
       try {
         const hostname = new URL(url).hostname;
         if (hostname === entry.pattern || hostname.endsWith('.' + entry.pattern)) return true;
-      } catch (e) { /* invalid url */ }
+      } catch (e) {}
     }
   }
   return false;
 }
+
+function isBlockedUrl(url) {
+  for (const pattern of blocklist) {
+    try {
+      if (url.includes(pattern)) return true;
+      if (pattern.includes('.*') || pattern.includes('\\')) {
+        try { if (new RegExp(pattern, 'i').test(url)) return true; } catch (e) {}
+      }
+      try {
+        const hostname = new URL(url).hostname;
+        if (hostname === pattern || hostname.endsWith('.' + pattern) ||
+            (pattern.startsWith('.') && hostname.endsWith(pattern))) return true;
+      } catch (e) {}
+    } catch (e) {}
+  }
+  return false;
+}
+
+function maybeBlockTab(tabId, url) {
+  if (!url || !url.startsWith('http')) return;
+  if (url.startsWith(browser.runtime.getURL(''))) return;
+  if (isWhitelisted(url) || !isBlockedUrl(url)) return;
+  const blockPageUrl = browser.runtime.getURL('blocked.html') +
+    `?url=${encodeURIComponent(url)}&reason=tab_switch`;
+  browser.tabs.update(tabId, { url: blockPageUrl }).catch(() => {});
+}
+
+browser.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await browser.tabs.get(tabId);
+    if (tab.url) maybeBlockTab(tabId, tab.url);
+  } catch (e) {}
+});
 
 function notifyWhitelistUpdate() {
   if (port && isConnected) {
@@ -78,10 +105,10 @@ function connectToNativeHost() {
         case 'BLOCKLIST_UPDATE':
           blocklist = message.data || [];
           log(`Updated blocklist: ${blocklist.length} entries`);
-          browser.storage.local.set({
-            blocklist: blocklist,
-            lastUpdate: message.timestamp
-          });
+          browser.storage.local.set({ blocklist, lastUpdate: message.timestamp });
+          browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+            if (tabs[0]?.url) maybeBlockTab(tabs[0].id, tabs[0].url);
+          }).catch(() => {});
           break;
 
         case 'WHITELIST_RESPONSE':
@@ -113,38 +140,25 @@ function connectToNativeHost() {
       isConnectedToApp = false;
       port = null;
       
-      // Check for error
       if (browser.runtime.lastError) {
         log('Disconnect error:', browser.runtime.lastError.message);
       }
       
-      // Try to reconnect after 5 seconds
       setTimeout(connectToNativeHost, 5000);
     });
-    
-    // Send initial ping to test connection
-    log('Sending ping to native host...');
+
     port.postMessage({ type: 'PING', browser: BROWSER_ID });
-    
-    // Request initial blocklist
-    setTimeout(() => {
-      log('Requesting initial blocklist...');
-      port.postMessage({ type: 'GET_BLOCKLIST' });
-    }, 100);
-    
+    setTimeout(() => port.postMessage({ type: 'GET_BLOCKLIST' }), 100);
+
   } catch (error) {
     log('Failed to connect to native host:', error);
     isConnected = false;
-    
-    // Retry connection after 5 seconds
     setTimeout(connectToNativeHost, 5000);
   }
 }
 
-// Start connection when extension loads
 connectToNativeHost();
 
-// Listen for popup requests
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_STATUS') {
     sendResponse({
@@ -169,7 +183,6 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       type: message.patternType,
       expiresAt: Date.now() + durationMs
     };
-    // Replace any existing entry for same pattern
     whitelist = pruneWhitelist().filter(e => e.pattern !== message.pattern);
     whitelist.push(entry);
     browser.storage.local.set({ whitelist });
@@ -185,86 +198,49 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true; // Keep channel open for async response
 });
 
-// Optional: Block matching URLs using webRequest API
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
     const url = details.url;
-
-    // Don't block our own extension pages
-    if (url.startsWith(browser.runtime.getURL(''))) {
-      return { cancel: false };
-    }
-
-    // Whitelisted — allow through
+    if (url.startsWith(browser.runtime.getURL(''))) return { cancel: false };
     if (isWhitelisted(url)) {
       log(`Whitelist pass: ${url}`);
       return { cancel: false };
     }
-    
-    // Check if URL matches any regex in blocklist
+
     for (const pattern of blocklist) {
       try {
         let matched = false;
-        let matchedPattern = pattern;
-        
-        // Try multiple matching strategies
-        // 1. Simple substring match for domains
-        if (url.includes(pattern)) {
-          matched = true;
-        }
-        
-        // 2. Regex match (if pattern looks like a regex)
+        const matchedPattern = pattern;
+
+        if (url.includes(pattern)) matched = true;
+
         if (!matched && (pattern.includes('.*') || pattern.includes('\\'))) {
-          try {
-            const regex = new RegExp(pattern, 'i');
-            if (regex.test(url)) {
-              matched = true;
-            }
-          } catch (e) {
-            // Invalid regex, skip
-          }
+          try { if (new RegExp(pattern, 'i').test(url)) matched = true; } catch (e) {}
         }
-        
-        // 3. Domain matching (extract hostname)
+
         if (!matched) {
           try {
-            const urlObj = new URL(url);
-            const hostname = urlObj.hostname;
-            
-            // Check if pattern matches hostname or subdomain
-            if (hostname === pattern || 
+            const hostname = new URL(url).hostname;
+            if (hostname === pattern ||
                 hostname.endsWith('.' + pattern) ||
-                pattern.startsWith('.') && hostname.endsWith(pattern)) {
-              matched = true;
-            }
-          } catch (e) {
-            // Invalid URL, skip
-          }
+                pattern.startsWith('.') && hostname.endsWith(pattern)) matched = true;
+          } catch (e) {}
         }
-        
+
         if (matched) {
           log(`Blocking: ${url} (matched: ${pattern})`);
-          
-          // Determine more specific block type
-          let blockType = 'domain';
-          if (pattern.includes('.*') || pattern.includes('\\')) {
-            blockType = 'regex';
-          }
-          
-          // Redirect to block page with info
+          const blockType = (pattern.includes('.*') || pattern.includes('\\')) ? 'regex' : 'domain';
           const blockPageUrl = browser.runtime.getURL('blocked.html') +
             `?url=${encodeURIComponent(url)}` +
             `&value=${encodeURIComponent(matchedPattern)}` +
             `&reason=${blockType}`;
-          
           return { redirectUrl: blockPageUrl };
         }
       } catch (error) {
-        // Invalid regex or error, skip
         log(`Error checking pattern ${pattern}: ${error.message}`);
       }
     }
-    
+
     return { cancel: false };
   },
   { urls: ["<all_urls>"] },
@@ -273,7 +249,6 @@ browser.webRequest.onBeforeRequest.addListener(
 
 log('Background script loaded');
 
-// Periodically check connection status
 setInterval(() => {
   if (port && isConnected) {
     try {
@@ -284,7 +259,7 @@ setInterval(() => {
   }
 }, 10000);
 
-// Prune expired whitelist entries, sync to Electron, reload active tab if it matched
+// Prune whitelist, sync to Electron, reload active tab if it matched an expired entry
 setInterval(() => {
   const expired = whitelist.filter(e => e.expiresAt <= Date.now());
   pruneWhitelist();

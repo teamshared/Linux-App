@@ -12,6 +12,9 @@ const SOCKET_PATH = '/tmp/focusbear.sock';
 
 let appSocket = null;
 let isConnectedToApp = false;
+let cachedBrowserId = null;
+let pendingBlocklistCallback = null;
+let pendingBlocklistTimeout = null;
 
 // Native messaging uses length-prefixed JSON messages
 function sendMessage(message) {
@@ -24,40 +27,20 @@ function sendMessage(message) {
 }
 
 function readMessage(callback) {
-  const chunks = [];
-  let totalLength = 0;
-  let expectedLength = null;
+  let buffer = Buffer.alloc(0);
 
   process.stdin.on('data', (chunk) => {
-    chunks.push(chunk);
-    totalLength += chunk.length;
+    buffer = Buffer.concat([buffer, chunk]);
 
-    // Read the 4-byte length header first
-    if (expectedLength === null && totalLength >= 4) {
-      const allData = Buffer.concat(chunks);
-      expectedLength = allData.readUInt32LE(0);
-
-      // Check if we have the complete message
-      if (totalLength >= 4 + expectedLength) {
-        const messageBuffer = allData.slice(4, 4 + expectedLength);
-        const message = JSON.parse(messageBuffer.toString('utf8'));
-        callback(message);
-
-        // Reset for next message
-        chunks.length = 0;
-        totalLength = 0;
-        expectedLength = null;
+    while (buffer.length >= 4) {
+      const msgLen = buffer.readUInt32LE(0);
+      if (buffer.length < 4 + msgLen) break;
+      try {
+        callback(JSON.parse(buffer.slice(4, 4 + msgLen).toString('utf8')));
+      } catch (error) {
+        log(`Error parsing stdin message: ${error.message}`);
       }
-    } else if (expectedLength !== null && totalLength >= 4 + expectedLength) {
-      const allData = Buffer.concat(chunks);
-      const messageBuffer = allData.slice(4, 4 + expectedLength);
-      const message = JSON.parse(messageBuffer.toString('utf8'));
-      callback(message);
-
-      // Reset for next message
-      chunks.length = 0;
-      totalLength = 0;
-      expectedLength = null;
+      buffer = buffer.slice(4 + msgLen);
     }
   });
 }
@@ -79,8 +62,8 @@ function connectToApp() {
     log('Connected to Electron app via socket');
     isConnectedToApp = true;
 
-    // Send initial handshake
-    appSocket.write(JSON.stringify({ type: 'NATIVE_HOST_CONNECTED' }) + '\n');
+    // Send initial handshake — include cached browser ID if known (covers reconnects)
+    appSocket.write(JSON.stringify({ type: 'NATIVE_HOST_CONNECTED', browser: cachedBrowserId }) + '\n');
   });
 
   appSocket.on('data', (data) => {
@@ -112,6 +95,14 @@ function connectToApp() {
             data: message.data,
             timestamp: Date.now()
           });
+        } else if (message.type === 'BLOCKLIST_RESPONSE') {
+          if (pendingBlocklistCallback) {
+            const cb = pendingBlocklistCallback;
+            pendingBlocklistCallback = null;
+            clearTimeout(pendingBlocklistTimeout);
+            pendingBlocklistTimeout = null;
+            cb(null, message.data);
+          }
         }
       } catch (error) {
         log(`Error parsing socket message: ${error.message}`);
@@ -141,41 +132,21 @@ function requestBlocklist(callback) {
     callback(new Error('Not connected to app'), []);
     return;
   }
-  
+
+  if (pendingBlocklistCallback) {
+    callback(new Error('Request already pending'), []);
+    return;
+  }
+
   log('Requesting blocklist from app via socket...');
-  
-  // Set up one-time listener for response
-  const timeout = setTimeout(() => {
+  pendingBlocklistCallback = callback;
+  pendingBlocklistTimeout = setTimeout(() => {
     log('Blocklist request timed out');
-    appSocket.removeAllListeners('data');
+    pendingBlocklistCallback = null;
+    pendingBlocklistTimeout = null;
     callback(new Error('Timeout'), []);
   }, 5000);
-  
-  const originalDataHandler = appSocket.listeners('data')[0];
-  
-  appSocket.once('data', (data) => {
-    clearTimeout(timeout);
-    
-    try {
-      const message = JSON.parse(data.toString().trim());
-      
-      if (message.type === 'BLOCKLIST_RESPONSE') {
-        log(`Received blocklist: ${message.data.length} entries`);
-        callback(null, message.data);
-      } else {
-        callback(new Error('Unexpected response type'), []);
-      }
-    } catch (error) {
-      log(`Error parsing blocklist response: ${error.message}`);
-      callback(error, []);
-    }
-    
-    // Restore original data handler
-    if (originalDataHandler) {
-      appSocket.on('data', originalDataHandler);
-    }
-  });
-  
+
   appSocket.write(JSON.stringify({ type: 'GET_BLOCKLIST' }) + '\n');
 }
 
@@ -218,13 +189,14 @@ readMessage((message) => {
 
     case 'PING':
       log('Received ping, sending pong');
+      if (message.browser) cachedBrowserId = message.browser;
       sendMessage({
         type: 'PONG',
         timestamp: Date.now(),
         connectedToApp: isConnectedToApp
       });
       if (isConnectedToApp && appSocket) {
-        appSocket.write(JSON.stringify({ type: 'PING', browser: message.browser || 'unknown', timestamp: Date.now() }) + '\n');
+        appSocket.write(JSON.stringify({ type: 'PING', browser: cachedBrowserId || 'unknown', timestamp: Date.now() }) + '\n');
       }
       break;
 

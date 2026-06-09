@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Add new browsers here as support is added.
-// id must match the BROWSER_ID constant in src/extension/background.js.
+// id must match the BROWSER_ID constant in the extension's background.js.
 const BROWSERS = [
   {
     id: 'firefox',
@@ -14,6 +14,58 @@ const BROWSERS = [
       'Click "This Firefox"',
       'Click "Load Temporary Add-on…"',
       'Select the file path shown below',
+    ],
+  },
+  {
+    id: 'chrome',
+    name: 'Chrome',
+    icon: '🌐',
+    xpiPath: '~/.local/share/focusbear/extension-chrome',
+    instructions: [
+      'Open Chrome',
+      'Navigate to chrome://extensions in the address bar',
+      'Enable "Developer mode" (toggle in the top right)',
+      'Click "Load unpacked"',
+      'Select the folder path shown below',
+    ],
+  },
+  {
+    id: 'chromium',
+    name: 'Chromium',
+    icon: '🌐',
+    xpiPath: '~/.local/share/focusbear/extension-chrome',
+    instructions: [
+      'Open Chromium',
+      'Navigate to chrome://extensions in the address bar',
+      'Enable "Developer mode" (toggle in the top right)',
+      'Click "Load unpacked"',
+      'Select the folder path shown below',
+    ],
+  },
+  {
+    id: 'brave',
+    name: 'Brave',
+    icon: '🦁',
+    xpiPath: '~/.local/share/focusbear/extension-chrome',
+    instructions: [
+      'Open Brave',
+      'Navigate to brave://extensions in the address bar',
+      'Enable "Developer mode" (toggle in the top right)',
+      'Click "Load unpacked"',
+      'Select the folder path shown below',
+    ],
+  },
+  {
+    id: 'opera',
+    name: 'Opera',
+    icon: '🅾️',
+    xpiPath: '~/.local/share/focusbear/extension-chrome',
+    instructions: [
+      'Open Opera',
+      'Navigate to opera://extensions in the address bar',
+      'Enable "Developer mode" (toggle in the top right)',
+      'Click "Load unpacked"',
+      'Select the folder path shown below',
     ],
   },
 ];

@@ -1,11 +1,17 @@
+/**
+ * Popup script - Chrome MV3 version
+ */
+
+// Allow shared code patterns that use the Firefox `browser` namespace
+const browser = globalThis.browser ?? globalThis.chrome;
+
 function log(message) {
   console.log('[Popup]', message);
 }
 
 function formatTime(timestamp) {
   if (!timestamp) return 'Never';
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString();
+  return new Date(timestamp).toLocaleTimeString();
 }
 
 function formatTimeRemaining(expiresAt) {
@@ -13,6 +19,12 @@ function formatTimeRemaining(expiresAt) {
   if (ms <= 0) return 'expired';
   const mins = Math.ceil(ms / 60000);
   return mins === 1 ? '1 min left' : `${mins} mins left`;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function renderWhitelist(entries) {
@@ -74,13 +86,10 @@ function updateUI() {
 
   browser.storage.local.get(['blocklist', 'lastUpdate']).then(result => {
     const blocklist = result.blocklist || [];
-    const lastUpdate = result.lastUpdate;
-
     document.getElementById('count').textContent = blocklist.length;
-    document.getElementById('lastUpdate').textContent = formatTime(lastUpdate);
+    document.getElementById('lastUpdate').textContent = formatTime(result.lastUpdate);
 
     const blocklistDiv = document.getElementById('blocklist');
-
     if (blocklist.length === 0) {
       blocklistDiv.innerHTML = '<div class="empty">No block patterns loaded</div>';
     } else {
@@ -88,8 +97,6 @@ function updateUI() {
         .map(pattern => `<div class="blocklist-item">${escapeHtml(pattern)}</div>`)
         .join('');
     }
-
-    log(`Displayed ${blocklist.length} patterns`);
   });
 
   browser.runtime.sendMessage({ type: 'GET_WHITELIST' }).then(response => {
@@ -97,18 +104,11 @@ function updateUI() {
   });
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 document.getElementById('refresh').addEventListener('click', () => {
   browser.runtime.sendMessage({ type: 'REFRESH_BLOCKLIST' }).then(response => {
     if (response.success) {
       setTimeout(updateUI, 500);
     } else {
-      log('Refresh failed:', response.error);
       alert('Failed to refresh: ' + response.error);
     }
   });

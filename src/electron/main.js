@@ -6,7 +6,8 @@ const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
-import { exec, execFile, spawn, execSync, spawnSync } from 'child_process';
+import { exec, execFile, spawn, execSync } from 'child_process';
+import { promisify } from 'util';
 import "./Blocker.js"
 import { setBroadcastFunction } from './Blocker.js';
 import { focusState } from './focusState.js';
@@ -18,20 +19,38 @@ import { unlink } from 'fs/promises';
 
 dotenv.config();
 
-// Unix domain socket server for native messaging
+const execFileAsync = promisify(execFile);
+
 const SOCKET_PATH = '/tmp/focusbear.sock';
 let socketServer = null;
-let nativeHostClients = [];
+const socketClients = new Map();       // socket → {browser: string|null, lastPing: number}
 let currentBlocklist = [];
 let currentWhitelist = [];
 let warningWindow = null;
 const connectedBrowsers = new Set();
-const socketBrowsers = new Map();
+const browserLastConnected = new Map();
 let pingMonitorActive = false;
-
-const socketPingTimes = new Map();
 let extensionWarningTimer = null;
 let extensionWarningActive = false;
+let warningBrowserId = null;
+
+let selectedBrowsers = ['firefox']; // persisted from setup; updated via applySettings
+
+const BROWSER_PGREP_PATTERNS = {
+  firefox:  ['firefox'],
+  chrome:   ['google-chrome'],
+  chromium: ['chromium'],
+  brave:    ['brave'],
+  opera:    ['opera'],
+};
+
+const BROWSER_KILL_TARGETS = {
+  firefox:  ['firefox', 'firefox-bin', 'firefox-esr'],
+  chrome:   ['google-chrome'],
+  chromium: ['chromium', 'chromium-browser'],
+  brave:    ['brave', 'brave-browser'],
+  opera:    ['opera'],
+};
 
 function getWhitelistPath() {
   return join(app.getPath('userData'), 'whitelist.json');
@@ -57,17 +76,13 @@ async function saveWhitelistToDisk(entries) {
 }
 
 async function startSocketServer() {
-  // Remove existing socket file if it exists
   try {
     await unlink(SOCKET_PATH);
-  } catch (error) {
-    // Ignore if file doesn't exist
-  }
+  } catch { /* stale socket, ignore */ }
 
   socketServer = createServer((socket) => {
     console.log('[Socket] Native host connected');
-    nativeHostClients.push(socket);
-    socketPingTimes.set(socket, Date.now());
+    socketClients.set(socket, { browser: null, lastPing: Date.now() });
 
     // Push current blocklist immediately so new connections don't wait for a GET_BLOCKLIST
     if (currentBlocklist.length > 0) {
@@ -91,19 +106,34 @@ async function startSocketServer() {
       lines.forEach(line => {
         try {
           const message = JSON.parse(line);
-          console.log('[Socket] Received from native host:', message.type);
+          const browserTag = message.browser ? ` (${message.browser})` : '';
+          console.log(`[Socket] Received from native host: ${message.type}${browserTag}`);
 
-          // Any traffic from native host means extension is alive
-          socketPingTimes.set(socket, Date.now());
+          if (socketClients.has(socket)) socketClients.get(socket).lastPing = Date.now();
 
-          if (message.type === 'PING') {
+          if (message.type === 'NATIVE_HOST_CONNECTED') {
+            if (message.browser) {
+              // Evict stale socket for this browser — old host may not have cleaned up
+              for (const [s, c] of socketClients) {
+                if (s !== socket && c.browser === message.browser) {
+                  console.log(`[Socket] Evicting stale ${message.browser} socket (new host connected)`);
+                  s.destroy();
+                  socketClients.delete(s);
+                }
+              }
+              if (socketClients.has(socket)) socketClients.get(socket).browser = message.browser;
+              browserLastConnected.set(message.browser, Date.now());
+              console.log(`[Socket] Host identified as ${message.browser} on connect`);
+            }
+          } else if (message.type === 'PING') {
             const browser = message.browser || 'unknown';
-            socketBrowsers.set(socket, browser);
+            if (socketClients.has(socket)) socketClients.get(socket).browser = browser;
+            browserLastConnected.set(browser, Date.now());
             if (!connectedBrowsers.has(browser)) {
               connectedBrowsers.add(browser);
               if (mainWindow) mainWindow.webContents.send('extension-connected', browser);
             }
-            cancelExtensionWarning();
+            if (!warningBrowserId || warningBrowserId === browser) cancelExtensionWarning();
           } else if (message.type === 'GET_BLOCKLIST') {
             console.log(`[Socket] Sending blocklist: ${currentBlocklist.length} entries`);
             socket.write(JSON.stringify({
@@ -132,21 +162,26 @@ async function startSocketServer() {
 
     socket.on('close', () => {
       console.log('[Socket] Native host disconnected');
-      nativeHostClients = nativeHostClients.filter(s => s !== socket);
-      socketPingTimes.delete(socket);
-      const browser = socketBrowsers.get(socket);
-      socketBrowsers.delete(socket);
-      if (browser && ![...socketBrowsers.values()].includes(browser)) {
+      const client = socketClients.get(socket);
+      socketClients.delete(socket);
+      const browser = client?.browser;
+      if (browser && ![...socketClients.values()].some(c => c.browser === browser)) {
         connectedBrowsers.delete(browser);
       }
-      // Socket closed but browser still running → extension crashed/disabled (not a normal browser close)
-      if (pingMonitorActive) {
-        setTimeout(() => {
-          if (nativeHostClients.length === 0 && isBrowserRunning() && !extensionWarningActive) {
-            console.log('[PingMonitor] Socket closed, browser still running — showing warning');
-            showExtensionWarning();
+      // Chrome: SW suspension is normal — alarm reconnects within 60s. 70s grace avoids false positives.
+      // Firefox: MV2 background is persistent, so disconnect means crash/disable. 5s grace.
+      if (pingMonitorActive && browser) {
+        const closedBrowser = browser;
+        const gracePeriod = closedBrowser === 'firefox' ? 5000 : 70000;
+        setTimeout(async () => {
+          // Cancel if browser already reconnected during grace period
+          if ([...socketClients.values()].some(c => c.browser === closedBrowser)) return;
+          if (!extensionWarningActive && await isBrowserRunning(closedBrowser)) {
+            console.log(`[PingMonitor] Socket closed, ${closedBrowser} still running after grace — showing warning`);
+            showExtensionWarning(closedBrowser);
           }
-        }, 5000);
+        }, gracePeriod);
+        // If browser unknown (PING never received before disconnect), browserScan handles it
       }
     });
 
@@ -164,7 +199,6 @@ async function startSocketServer() {
   });
 }
 
-// Broadcast blocklist update to all connected native hosts
 function broadcastBlocklistUpdate(blocklist) {
   currentBlocklist = blocklist;
 
@@ -174,29 +208,35 @@ function broadcastBlocklistUpdate(blocklist) {
     timestamp: Date.now()
   }) + '\n';
 
-  console.log(`[Socket] Broadcasting blocklist update to ${nativeHostClients.length} clients`);
+  console.log(`[Socket] Broadcasting blocklist update to ${socketClients.size} clients`);
 
-  nativeHostClients.forEach(client => {
+  for (const socket of socketClients.keys()) {
     try {
-      client.write(message);
+      socket.write(message);
     } catch (error) {
       console.error('[Socket] Error broadcasting to client:', error);
     }
-  });
+  }
 }
 
-function isBrowserRunning() {
-  // spawnSync = no shell spawned, so pgrep -f won't match a shell cmdline containing "firefox".
-  // pgrep excludes its own PID, so no self-match either.
-  const result = spawnSync('pgrep', ['-f', 'firefox'], { stdio: 'pipe' });
-  return result.status === 0;
+// browserId: check only that browser. Omit to check all selected browsers.
+async function isBrowserRunning(browserId) {
+  const ids = browserId ? [browserId] : selectedBrowsers;
+  for (const id of ids) {
+    for (const p of (BROWSER_PGREP_PATTERNS[id] || [])) {
+      try {
+        await execFileAsync('pgrep', ['-f', p]);
+        return true;
+      } catch { /* no match */ }
+    }
+  }
+  return false;
 }
 
-function killBrowsers() {
-  console.log('[PingMonitor] Killing Firefox');
-  spawnSync('pkill', ['-x', 'firefox'], { stdio: 'pipe' });
-  spawnSync('pkill', ['-x', 'firefox-bin'], { stdio: 'pipe' });
-  spawnSync('pkill', ['-x', 'firefox-esr'], { stdio: 'pipe' });
+async function killBrowsers(browserId) {
+  const targets = BROWSER_KILL_TARGETS[browserId] || [];
+  console.log(`[PingMonitor] Killing ${browserId} (${targets.join(', ')})`);
+  await Promise.all(targets.map(name => execFileAsync('pkill', ['-x', name]).catch(() => {})));
 }
 
 function destroyWarningWindow() {
@@ -216,16 +256,18 @@ function cancelExtensionWarning() {
   destroyWarningWindow();
 }
 
-function showExtensionWarning() {
+function showExtensionWarning(browserId) {
   if (extensionWarningActive) return;
   extensionWarningActive = true;
-  console.log('[PingMonitor] Showing extension disconnected warning');
+  warningBrowserId = browserId || null;
+  console.log(`[PingMonitor] Showing extension disconnected warning (browser: ${browserId})`);
 
-  extensionWarningTimer = setTimeout(() => {
+  const timerBrowserId = browserId || null;
+  extensionWarningTimer = setTimeout(async () => {
     extensionWarningActive = false;
     extensionWarningTimer = null;
     destroyWarningWindow();
-    killBrowsers();
+    await killBrowsers(timerBrowserId);
   }, 30000);
 
   warningWindow = new BrowserWindow({
@@ -240,7 +282,9 @@ function showExtensionWarning() {
       contextIsolation: false,
     },
   });
-  warningWindow.loadFile(join(__dirname, 'extension-warning.html'));
+  const BROWSER_NAMES = { firefox: 'Firefox', chrome: 'Chrome', chromium: 'Chromium', brave: 'Brave', opera: 'Opera' };
+  const browserName = BROWSER_NAMES[browserId] || 'your browser';
+  warningWindow.loadFile(join(__dirname, 'extension-warning.html'), { query: { browser: browserName } });
   warningWindow.webContents.once('did-finish-load', () => {
     if (!warningWindow) return;
     warningWindow.webContents.executeJavaScript('document.querySelector(".card").getBoundingClientRect().height + 48')
@@ -258,37 +302,49 @@ function startPingMonitor() {
   if (pingMonitorActive) return;
   pingMonitorActive = true;
 
-  // Detect extension going silent on an existing connection
-  setInterval(() => {
+  // Firefox MV2 background is persistent — detect hung connections via ping silence.
+  // Chrome MV3 SWs sleep and reconnect via alarm; socket-close grace handles disconnect detection.
+  setInterval(async () => {
     if (extensionWarningActive) return;
     const now = Date.now();
-    for (const [_socket, lastPing] of socketPingTimes) {
-      if (now - lastPing > 15000) {
-        console.log('[PingMonitor] No ping for 15s on socket, checking browser');
-        if (isBrowserRunning()) {
-          showExtensionWarning();
-        }
+    for (const [, client] of socketClients) {
+      if (client.browser !== 'firefox') continue;
+      if (now - client.lastPing > 20000 && await isBrowserRunning('firefox')) {
+        showExtensionWarning('firefox');
         break;
       }
     }
   }, 5000);
 
-  // Detect browser running without extension — checked on startup and every 30s after
-  const browserScan = () => {
+  // Detect browser running without extension ever connecting (startup / disabled-before-launch).
+  // Firefox: 5s grace (persistent background connects immediately).
+  // Chrome: 70s grace (alarm fires within 60s if extension enabled, then reconnects).
+  const BROWSER_SCAN_GRACE = { firefox: 5000 };
+  const DEFAULT_SCAN_GRACE = 70000;
+
+  const browserScan = async () => {
     if (extensionWarningActive) return;
-    if (nativeHostClients.length > 0) return;
-    if (isBrowserRunning()) {
-      console.log('[BrowserScan] Browser running with no extension socket — showing warning');
-      showExtensionWarning();
+    const now = Date.now();
+    for (const browserId of selectedBrowsers) {
+      if (connectedBrowsers.has(browserId)) continue;
+      if (!await isBrowserRunning(browserId)) continue;
+      const grace = BROWSER_SCAN_GRACE[browserId] ?? DEFAULT_SCAN_GRACE;
+      const lastSeen = browserLastConnected.get(browserId) ?? 0;
+      if (now - lastSeen < grace) continue;
+      console.log(`[BrowserScan] ${browserId} running without extension for >${grace}ms — showing warning`);
+      showExtensionWarning(browserId);
+      break;
     }
   };
 
-  setTimeout(browserScan, 20000); // initial check — 20s grace for extension to connect on startup
-  setInterval(browserScan, 30000);
+  setTimeout(browserScan, 20000); // initial check — Firefox connects immediately; Chrome needs ~60s for alarm
+  setInterval(browserScan, 90000);
 }
 
 // Install native messaging host on startup — runs in-process, no subprocess needed.
 // Files are copied into ~/.local/share/focusbear/ so snap Firefox's sandbox can reach them.
+const CHROME_EXTENSION_ID = 'dhjmacpmdnfhpghleebnngdhikmffcem';
+
 async function installNativeMessaging() {
   try {
     const nativeSrcDir = app.isPackaged
@@ -297,14 +353,15 @@ async function installNativeMessaging() {
     const extensionSrcDir = app.isPackaged
       ? join(process.resourcesPath, 'extension')
       : join(__dirname, '..', 'extension');
+    const chromeExtSrcDir = app.isPackaged
+      ? join(process.resourcesPath, 'extension-chrome')
+      : join(__dirname, '..', 'extension-chrome');
 
-    // Copy host.js + package.json into home so snap Firefox's sandboxed process can read them
     const localNativeDir = join(homedir(), '.local', 'share', 'focusbear', 'native-messaging');
     await fs.mkdir(localNativeDir, { recursive: true });
     await fs.copyFile(join(nativeSrcDir, 'host.js'),     join(localNativeDir, 'host.js'));
     await fs.copyFile(join(nativeSrcDir, 'package.json'), join(localNativeDir, 'package.json'));
 
-    // Copy extension files into home so snap Firefox can load them from $HOME
     const localExtDir = join(homedir(), '.local', 'share', 'focusbear', 'extension');
     await fs.mkdir(localExtDir, { recursive: true });
     for (const f of await fs.readdir(extensionSrcDir)) {
@@ -318,8 +375,8 @@ async function installNativeMessaging() {
     await fs.writeFile(wrapperPath, `#!/bin/sh\nexec node "${join(localNativeDir, 'host.js')}" "$@"\n`);
     await fs.chmod(wrapperPath, 0o755);
 
-    // Write manifest to all known Firefox locations (regular + snap)
-    const manifest = JSON.stringify({
+    // Write Firefox manifest to all known locations (regular + snap)
+    const firefoxManifest = JSON.stringify({
       name: 'com.focusbear.native_host',
       description: 'Focus Bear Native Messaging Host',
       path: wrapperPath,
@@ -331,10 +388,46 @@ async function installNativeMessaging() {
       join(homedir(), 'snap', 'firefox', 'common', '.mozilla', 'native-messaging-hosts'),
     ]) {
       await fs.mkdir(dir, { recursive: true }).catch(() => {});
-      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), manifest).catch(() => {});
+      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), firefoxManifest).catch(() => {});
     }
 
-    // Pack extension as .xpi (zip) so snap Firefox's portal grants access to a single file
+    // Write Chrome/Chromium native messaging manifests
+    const chromeManifest = JSON.stringify({
+      name: 'com.focusbear.native_host',
+      description: 'Focus Bear Native Messaging Host',
+      path: wrapperPath,
+      type: 'stdio',
+      allowed_origins: [`chrome-extension://${CHROME_EXTENSION_ID}/`]
+    }, null, 2);
+    for (const dir of [
+      join(homedir(), '.config', 'google-chrome', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'google-chrome-beta', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'google-chrome-unstable', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'chromium', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'BraveSoftware', 'Brave-Browser', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'opera', 'NativeMessagingHosts'),
+    ]) {
+      await fs.mkdir(dir, { recursive: true }).catch(() => {});
+      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), chromeManifest).catch(() => {});
+    }
+
+    // Copy Chrome extension files and pack as .zip
+    const localChromeExtDir = join(homedir(), '.local', 'share', 'focusbear', 'extension-chrome');
+    await fs.mkdir(localChromeExtDir, { recursive: true });
+    for (const f of await fs.readdir(chromeExtSrcDir).catch(() => [])) {
+      await fs.copyFile(join(chromeExtSrcDir, f), join(localChromeExtDir, f)).catch(() => {});
+    }
+    const chromeZipPath = join(homedir(), '.local', 'share', 'focusbear', 'focusbear-extension-chrome.zip');
+    try {
+      try { await fs.unlink(chromeZipPath); } catch {}
+      execSync(`cd "${localChromeExtDir}" && zip -r "${chromeZipPath}" .`, { stdio: 'pipe' });
+      console.log('[Native Messaging] Chrome extension .zip ready at', chromeZipPath);
+      console.log('[Native Messaging] Chrome: chrome://extensions → Load unpacked → select', localChromeExtDir);
+    } catch (zipErr) {
+      console.warn('[Native Messaging] Could not create Chrome .zip:', zipErr.message);
+    }
+
+    // Pack Firefox extension as .xpi (zip) so snap Firefox's portal grants access to a single file
     // containing all extension scripts — selecting manifest.json alone only mounts that one file.
     const xpiPath = join(homedir(), '.local', 'share', 'focusbear', 'focusbear-extension.xpi');
     try {
@@ -413,7 +506,11 @@ app.on("ready", function(){
     // Only monitor extension liveness after setup is complete.
     // Checked from disk so the decision is made before the renderer loads.
     fs.readFile(getSettingsPath(), 'utf8')
-      .then(data => { if (JSON.parse(data).setupComplete) startPingMonitor(); })
+      .then(data => {
+        const s = JSON.parse(data);
+        if (s.selectedBrowsers) selectedBrowsers = s.selectedBrowsers;
+        if (s.setupComplete) startPingMonitor();
+      })
       .catch(() => {}); // first run — no settings file yet, skip monitor
 
     mainWindow = new BrowserWindow({
@@ -538,9 +635,9 @@ ipcMain.handle('get-local-settings', async () => {
 
 ipcMain.on('setup-complete', () => { startPingMonitor(); });
 
-ipcMain.on('extension-warning-close-browser', () => {
+ipcMain.on('extension-warning-close-browser', async () => {
   cancelExtensionWarning();
-  killBrowsers();
+  await killBrowsers(warningBrowserId);
 });
 
 ipcMain.on('quit-channel', function() {
@@ -622,7 +719,7 @@ app.on('before-quit', function() {
     // Close socket server
     if (socketServer) {
         socketServer.close();
-        nativeHostClients.forEach(client => client.end());
+        for (const socket of socketClients.keys()) socket.end();
     }
 });
 
@@ -876,8 +973,12 @@ async function saveLocalBackup(settings) {
 function applySettings(settings) {
   if (settings.urlList) {
     console.log('Blocklist updated');
-    // Broadcast to native hosts
     broadcastBlocklistUpdate(settings.urlList);
+  }
+
+  if (settings.selectedBrowsers) {
+    selectedBrowsers = settings.selectedBrowsers;
+    console.log('Selected browsers updated:', selectedBrowsers);
   }
 
   console.log('Blocking mode:', settings.selectedBlockMode);

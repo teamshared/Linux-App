@@ -91,14 +91,17 @@
       </picture>
     </div>
     <h1>Extension Disconnected</h1>
-    <p>The Focus Bear Firefox extension is not active.<br>Firefox will be closed to protect your focus session.</p>
+    <p>The Focus Bear <span class="browser-name"></span> extension is not active.<br><span class="browser-name"></span> will be closed to protect your focus session.</p>
     <div class="countdown" id="countdown">30</div>
-    <p class="hint">Re-enable the extension in Firefox to dismiss this warning.</p>
-    <button id="closeNow">Close Firefox Now</button>
+    <p class="hint">Re-enable the extension in <span class="browser-name"></span> to dismiss this warning.</p>
+    <button id="closeNow">Close <span class="browser-name"></span> Now</button>
   </div>
 
   <script>
     const { ipcRenderer } = require('electron');
+
+    const browserName = new URLSearchParams(window.location.search).get('browser') || 'your browser';
+    document.querySelectorAll('.browser-name').forEach(el => { el.textContent = browserName; });
 
     let seconds = 30;
     const el = document.getElementById('countdown');
