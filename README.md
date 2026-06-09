@@ -26,7 +26,7 @@ npm run start:prod     # Production mode
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install ./focusbear-1.0.0-amd64.deb
+sudo dpkg -i ./focusbear-1.0.0-amd64.deb
 
 # Fedora/RHEL
 sudo dnf install ./focusbear-1.0.0-x86_64.rpm
