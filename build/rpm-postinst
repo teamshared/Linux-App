@@ -14,6 +14,122 @@ MANIFEST_NAME="com.focusbear.native_host.json"
 # discovered regardless of which Firefox build is installed.
 FIREFOX_MANIFEST_DIRS="/usr/lib/mozilla/native-messaging-hosts /usr/lib64/mozilla/native-messaging-hosts"
 
+# ── Dependency Checker ───────────────────────────────────────────────────────
+# Check for required dependencies and prompt to install if missing
+check_and_install_dependencies() {
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║          Focus Bear - Dependency Checker                       ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Detect package manager (RPM-based)
+    if command -v dnf &> /dev/null; then
+        PKG_MANAGER="dnf"
+        INSTALL_CMD="dnf install -y"
+        UPDATE_CMD="dnf check-update || true"
+        # Fedora/RHEL packages for Electron app
+        PACKAGES=(
+            "python3"
+            "nodejs"
+            "zip"
+            "gtk3"
+            "glib2"
+            "libX11"
+            "dbus"
+            "fontconfig"
+            "freetype"
+            "libnotify"
+            "nss"
+            "libXss"
+            "libXtst"
+            "xdg-utils"
+            "at-spi2-core"
+            "util-linux"
+            "libsecret"
+        )
+    elif command -v zypper &> /dev/null; then
+        PKG_MANAGER="zypper"
+        INSTALL_CMD="zypper install -y"
+        UPDATE_CMD="zypper refresh || true"
+        # openSUSE packages for Electron app
+        PACKAGES=(
+            "python3"
+            "nodejs"
+            "zip"
+            "gtk3"
+            "glib2"
+            "libX11-6"
+            "dbus-1"
+            "fontconfig"
+            "freetype2"
+            "libnotify1"
+            "mozilla-nss"
+            "libxss1"
+            "libXtst6"
+            "xdg-utils"
+            "at-spi2-core"
+            "util-linux"
+            "libsecret-1-0"
+        )
+    elif command -v yum &> /dev/null; then
+        PKG_MANAGER="yum"
+        INSTALL_CMD="yum install -y"
+        UPDATE_CMD="yum check-update || true"
+        # RHEL/CentOS packages for Electron app
+        PACKAGES=(
+            "python3"
+            "nodejs"
+            "zip"
+            "gtk3"
+            "glib2"
+            "libX11"
+            "dbus"
+            "fontconfig"
+            "freetype"
+            "libnotify"
+            "nss"
+            "libXss"
+            "libXtst"
+            "xdg-utils"
+            "at-spi2-core"
+            "util-linux"
+            "libsecret"
+        )
+    else
+        echo "Warning: No supported RPM package manager found (dnf, zypper, yum)"
+        return 0
+    fi
+
+    echo "Detected package manager: $PKG_MANAGER"
+
+    # Check which packages are missing
+    MISSING=()
+    for pkg in "${PACKAGES[@]}"; do
+        if ! rpm -q "$pkg" &>/dev/null; then
+            MISSING+=("$pkg")
+        fi
+    done
+
+    if [ ${#MISSING[@]} -eq 0 ]; then
+        echo "✓ All dependencies are installed"
+        return 0
+    fi
+
+    echo "⚠ Missing ${#MISSING[@]} dependencies: ${MISSING[@]}"
+    read -p "Install now? (requires sudo) [Y/n] " -r -t 30 || REPLY="Y"
+
+    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+        $UPDATE_CMD || true
+        $INSTALL_CMD "${MISSING[@]}" && echo "✓ Dependencies installed!" || echo "✗ Installation failed"
+    fi
+}
+
+# Run dependency checker (only on fresh install)
+if [ "$1" = "1" ]; then
+    check_and_install_dependencies
+fi
+
 # chrome-sandbox must be SUID root for Electron's process sandbox to work
 chmod 4755 "${APP_DIR}/chrome-sandbox" || true
 
@@ -83,6 +199,54 @@ if [ -f "$SYSTEMD_UNIT_SRC" ]; then
     chmod 644 "$SYSTEMD_UNIT_DEST"
 fi
 
+# ── Firefox Extension Auto-Installation ────────────────────────────────────────
+# Register extension in all user Firefox profiles
+echo ""
+echo "🔧 Installing Firefox extension in user profiles..."
+
+EXTENSION_ID="focusbear@focusbear.io"
+FIREFOX_BASE_DIRS=(
+    "$HOME/.mozilla/firefox"
+    "$HOME/snap/firefox/common/.mozilla/firefox"
+)
+
+installed_count=0
+
+for firefox_dir in "${FIREFOX_BASE_DIRS[@]}"; do
+    if [ ! -f "$firefox_dir/profiles.ini" ]; then
+        continue
+    fi
+
+    # Parse profiles.ini and extract profile paths
+    while IFS='=' read -r key value; do
+        if [[ "$key" == "Path" ]]; then
+            profile_path="$value"
+            is_relative=$(grep -A 1 "Path=$profile_path" "$firefox_dir/profiles.ini" | grep "IsRelative=" | cut -d'=' -f2)
+
+            # Construct full path
+            if [ "$is_relative" = "1" ]; then
+                full_path="$firefox_dir/$profile_path"
+            else
+                full_path="$profile_path"
+            fi
+
+            # Create extension directory and proxy file
+            if [ -d "$full_path" ]; then
+                mkdir -p "$full_path/extensions"
+                # Point to the XPI that will be generated on app first launch
+                echo "\$HOME/.local/share/focusbear/focusbear-extension.xpi" > "$full_path/extensions/$EXTENSION_ID" 2>/dev/null || true
+                ((installed_count++))
+            fi
+        fi
+    done < <(grep "^Path=" "$firefox_dir/profiles.ini")
+done
+
+if [ "$installed_count" -gt 0 ]; then
+    echo "   ✓ Extension registered in $installed_count Firefox profile(s)"
+else
+    echo "   ℹ️  No Firefox profiles found yet (they'll be created on first Firefox launch)"
+fi
+
 # ── Print installation success message ────────────────────────────────────────
 echo ""
 echo "╔════════════════════════════════════════════════════════════════╗"
@@ -91,27 +255,22 @@ echo "╚═══════════════════════�
 echo ""
 echo "📱 Next Steps:"
 echo ""
-echo "1️⃣  Start Focus Bear:"
+echo "1️⃣  Start Focus Bear (generates XPI):"
 echo "    focusbear"
 echo ""
-echo "2️⃣  Install Firefox Extension:"
-echo "    a) Open Firefox and go to: about:debugging#/runtime/this-firefox"
-echo "    b) Click 'Load Temporary Add-on'"
-echo "    c) Navigate to: ~/.local/share/focusbear/"
-echo "    d) Select: focusbear-extension.xpi"
+echo "2️⃣  Restart Firefox:"
+echo "    The extension will auto-load from ~/.local/share/focusbear/"
 echo ""
 echo "3️⃣  (Optional) Enable Background Service:"
-echo "    Run these commands to start Focus Bear in the background:"
 echo "    systemctl --user daemon-reload"
 echo "    systemctl --user enable --now focusbear"
 echo ""
 echo "4️⃣  Verify Extension is Running:"
 echo "    - In Firefox, go to about:extensions"
-echo "    - Look for 'Focus Bear' extension"
-echo "    - It should show as 'Temporary' (will be permanent after installation)"
+echo "    - Look for 'Focus Bear Blocker' extension"
+echo "    - Enable it if needed"
 echo ""
 echo "📝 Extension Location: ~/.local/share/focusbear/focusbear-extension.xpi"
-echo "📝 Config Location:    ~/.local/share/focusbear/"
 echo ""
 echo "🆘 Need Help? Visit: https://focusbear.io/help"
 echo ""

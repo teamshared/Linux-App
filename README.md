@@ -1,121 +1,373 @@
-## Project-Group-3---AR-573
-Focus Bear Linux Distraction Blocker
+# Focus Bear - Linux Distraction Blocker
 
-### Documentation
+A lightweight, browser-native URL blocking application for Linux using Electron and native messaging architecture.
 
-Refer to word docs and [this video](https://drive.google.com/file/d/1Af-z7W5sLIHynJB9LSC3MY7zyKFEmIZy/view?usp=sharing) for an overview.
+**Status:** [1.0.0] - Production Ready
 
-### Secrets
+---
 
-In github repo secrets
+## Quick Start
 
-### Dev Commands
+### Prerequisites
 
-#### npm run start:prod
-start application in production mode
-
-#### npm run start
-start application in development mode (with hot reload)
-
-### Browser Extension Setup (Recommended)
-
-The extension provides lightweight, browser-native URL blocking without the overhead of system-wide proxying.
-
-#### Prerequisites
-- Node.js (version 20+)
+- Node.js v20+ (for development)
 - Firefox or Chrome/Chromium browser
+- System libraries (see [System Dependencies](#system-dependencies))
 
-#### Installation Steps
+### Development
 
-1. **Install the Native Messaging Host**
-   ```bash
-   npm run install-native-messaging
-   ```
-   
-   This will:
-   - Copy the native host script to `/usr/local/bin/focusbear-native-host`
-   - Install the Firefox manifest to `~/.mozilla/native-messaging-hosts/`
-   - You may need to enter your password (sudo) for the installation
-
-2. **Load the Extension in Firefox**
-   - Open Firefox
-   - Navigate to `about:debugging#/runtime/this-firefox`
-   - Click **"Load Temporary Add-on..."**
-   - Navigate to `src/extension/` in this project
-   - Select the `manifest.json` file
-   
-   The extension icon should appear in your Firefox toolbar.
-
-3. **Start the Electron App**
-   ```bash
-   npm run start
-   ```
-   
-   The app automatically starts a Unix socket server that the native messaging host connects to.
-
-4. **Verify Connection**
-   - Click the Focus Bear extension icon in Firefox
-   - You should see:
-     - ✅ Green status indicator (connected to native host)
-     - ✅ Native host connected to Electron app
-     - Current blocklist entries
-
-5. **Test Blocking**
-   - In the Focus Bear app, add domains to block (e.g., `facebook.com`, `twitter.com`)
-   - Click 'Export (sub)domains to .txt'
-   - The extension automatically receives the updated blocklist via the native messaging host
-   - Try visiting blocked sites - you should see the Focus Bear block page
-
-#### Debugging the Extension
-
-**Check Native Host Logs:**
 ```bash
-tail -f /tmp/focusbear-native-host.log
+npm ci                  # Install dependencies
+npm run start          # Development mode (hot reload)
+npm run start:prod     # Production mode
 ```
 
-**Inspect Extension Console:**
-1. Go to `about:debugging#/runtime/this-firefox`
-2. Find the Focus Bear extension
-3. Click **"Inspect"** to view console logs and debug
+### Production - Install via Package Manager
 
-**Verify Socket Connection:**
+```bash
+# Debian/Ubuntu
+sudo dpkg -i ./focusbear-1.0.0-amd64.deb
+
+# Fedora/RHEL
+sudo dnf install ./focusbear-1.0.0-x86_64.rpm
+
+# openSUSE
+sudo zypper install ./focusbear-1.0.0-x86_64.rpm
+
+# Or use AppImage (no installation)
+chmod +x focusbear-1.0.0-x86_64.AppImage
+./focusbear-1.0.0-x86_64.AppImage
+```
+
+---
+
+## Architecture
+
+Focus Bear uses a **native messaging bridge** to enable browser-based URL blocking without system-wide proxying:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Electron App                                                 │
+│ (blocklist management, Unix socket server)                   │
+└────────────────────┬─────────────────────────────────────────┘
+                     │ Unix Socket (/tmp/focusbear.sock)
+                     │
+┌────────────────────▼─────────────────────────────────────────┐
+│ Native Messaging Host                                        │
+│ (node process, bridges socket ↔ browser native messaging)   │
+└────────────────────┬─────────────────────────────────────────┘
+                     │ Native Messaging Protocol
+                     │
+┌────────────────────▼─────────────────────────────────────────┐
+│ Browser Extension (Firefox/Chrome)                           │
+│ (blocks URLs using WebExtensions webRequest API)            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Why This Approach?
+
+| Feature | Native Messaging | mitmproxy (deprecated) |
+|---------|------------------|----------------------|
+| Performance | ~0% overhead | 70x slowdown |
+| Setup | One-click | Manual proxy + cert config |
+| Security | No MITM | Requires custom CA trust |
+| Sandboxing | Works with Flatpak/Snap | Breaks with sandboxed browsers |
+
+---
+
+## Installation & Setup
+
+### 1. Install via Package Manager (Recommended)
+
+The package includes automatic dependency checking. During installation, you'll see:
+
+```
+╔════════════════════════════════════════════════════════════════╗
+║          Focus Bear - Dependency Checker                       ║
+╚════════════════════════════════════════════════════════════════╝
+
+Detected package manager: apt
+
+⚠ Found missing dependencies: 3
+  - libgtk-3-0
+  - libnotify4
+  - libnss3
+
+Install missing dependencies now? (requires sudo) [Y/n]
+```
+
+**Press Enter** to automatically install all dependencies.
+
+### 2. Post-Installation Setup
+
+After installation, the app automatically:
+- Creates `/usr/bin/focusbear` wrapper script
+- Installs native messaging host
+- Configures Firefox/Chrome manifests
+- Creates `~/.local/share/focusbear/` with extension files
+
+**First launch:**
+```bash
+focusbear &
+```
+
+### 3. Load Extension in Firefox
+
+1. Open Firefox → `about:debugging#/runtime/this-firefox`
+2. Click **"Load Temporary Add-on"**
+3. Select `~/.local/share/focusbear/focusbear-extension.xpi`
+
+### 4. Load Extension in Chrome
+
+1. Open Chrome → `chrome://extensions/`
+2. Enable **"Developer mode"** (top right)
+3. Click **"Load unpacked"**
+4. Select `~/.local/share/focusbear/extension/`
+
+---
+
+## System Dependencies
+
+### Debian/Ubuntu
+
+```bash
+sudo apt-get install -y \
+  libgtk-3-0 libglib2.0-0 libx11-6 libdbus-1-3 \
+  libfontconfig1 libfreetype6 libnotify4 libnss3 \
+  libxss1 libxtst6 xdg-utils libatspi2.0-0 \
+  libuuid1 libsecret-1-0 python3 nodejs zip
+```
+
+### Fedora/RHEL
+
+```bash
+sudo dnf install -y \
+  gtk3 glib2 libX11 dbus fontconfig freetype \
+  libnotify nss libXss libXtst xdg-utils \
+  at-spi2-core util-linux libsecret python3 nodejs zip
+```
+
+### openSUSE
+
+```bash
+sudo zypper install -y \
+  gtk3 glib2 libX11-6 dbus-1 fontconfig freetype2 \
+  libnotify1 mozilla-nss libxss1 libXtst6 xdg-utils \
+  at-spi2-core util-linux libsecret-1-0 python3 nodejs zip
+```
+
+---
+
+## Usage
+
+### In the App
+
+1. **Add URLs to block** in the blocklist
+2. **Export domains** to sync with browser
+3. **Enable focus sessions** to activate blocking
+4. **Whitelist exceptions** as needed
+
+### In the Browser Extension
+
+- Green status ✅ = Connected to native host
+- Red status ❌ = Connection lost (restart the app)
+- View current blocklist directly in extension popup
+
+---
+
+## Uninstallation
+
+### Via Package Manager
+
+```bash
+# Debian/Ubuntu
+sudo apt-get remove focusbear
+
+# Fedora/RHEL
+sudo dnf remove focusbear
+
+# openSUSE
+sudo zypper remove focusbear
+```
+
+### Manual Cleanup
+
+```bash
+# Remove all user data
+rm -rf ~/.local/share/focusbear/
+rm -rf ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+rm -rf ~/.config/focusbear/
+rm -f /tmp/focusbear.sock
+```
+
+---
+
+## Debugging
+
+### Common Issues
+
+#### Native Host Connection Failed
 ```bash
 # Check if socket exists
 ls -la /tmp/focusbear.sock
 
-# Check Electron app logs for socket messages
-# Look for: [Socket] Native host connected
+# View native host logs
+tail -f /tmp/focusbear-native-host.log
+
+# Kill stale process
+pkill -f focusbear
 ```
 
-#### Architecture
+#### Extension Not Loading
+```bash
+# Verify extension file
+ls -la ~/.local/share/focusbear/focusbear-extension.xpi
 
+# Check Firefox manifest
+cat ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
 ```
-Electron App → Unix Socket → Native Messaging Host → Browser Extension
+
+#### Missing Dependencies
+Re-run installation; dependency checker will auto-install:
+
+```bash
+sudo apt-get install ./focusbear-1.0.0-amd64.deb  # Debian
+sudo dnf install ./focusbear-1.0.0-x86_64.rpm    # Fedora
 ```
 
-- **Electron App**: Manages blocklist, starts socket server on `/tmp/focusbear.sock`
-- **Native Host**: Bridges between Unix socket and browser's native messaging protocol
-- **Extension**: Receives blocklist, blocks URLs using `webRequest` API
+### Debug Commands
 
-For more details, see `docs/BLOCKING.md` and `src/extension/README.md`.
+```bash
+# View app version
+focusbear --version
+
+# Check installed packages
+dpkg -l | grep focusbear        # Debian
+rpm -qa | grep focusbear        # RPM
+
+# Monitor socket connections
+lsof /tmp/focusbear.sock
+
+# View browser extension console
+Firefox: about:debugging#/runtime/this-firefox → Inspect
+Chrome: chrome://extensions → "Details" → "Errors"
+```
 
 ---
 
-### mitmproxy (Removed)
+## Building from Source
 
-> **Note:** The mitmproxy-based blocking approach has been completely removed from this codebase. All blocking functionality now uses the native messaging extension architecture documented above, which is lightweight, secure, and doesn't require system-wide proxy configuration or certificate management.
+### Prerequisites
 
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y nodejs npm fakeroot rpm zip python3
 
-### Dependencies
-- Node js, At Least Node Js version 20 so its Vite Compatible Can be installed from the Node Js Official Website 
-- npm (Node Package Manager): Should be at least version 10.0.0 should be isntalled when you install nodejs 
-- Python3: Should be at least version 3.8 can be installed with the following command “sudo apt install python3 -y” 
-- build-essential 
-- libgtk-3-0 
-- libnotify4  
-- libnss3  
-- libxss1  
-- libxtst6  
-- xdg-utils  
-- libatspi2.0-0  
-- libsecret-1-0  
+# Fedora/RHEL
+sudo dnf install -y nodejs npm fakeroot rpm zip python3
+
+# openSUSE
+sudo zypper install -y nodejs npm fakeroot rpm zip python3
+```
+
+### Build Steps
+
+```bash
+npm ci                              # Install dependencies
+chmod +x build/postinst build/prerm # Make scripts executable
+npm run package:full                # Build all formats
+```
+
+Output:
+- `dist/focusbear-1.0.0-x86_64.AppImage` (~160 MB)
+- `dist/focusbear-1.0.0-amd64.deb` (~107 MB)
+- `dist/focusbear-1.0.0-x86_64.rpm` (~107 MB)
+
+---
+
+## Development Scripts
+
+```bash
+npm run start              # Dev mode with hot reload
+npm run start:prod        # Production mode
+npm run build             # Build frontend
+npm run build:dev         # Build frontend (dev)
+npm run package           # Package AppImage only
+npm run package:all       # Package all formats (AppImage + deb)
+npm run package:full      # Package all formats including RPM
+npm run lint              # Run ESLint
+npm run install-native-messaging  # Install native host manually
+```
+
+---
+
+## Known Limitations
+
+### Flatpak ❌
+Flatpak sandboxing prevents:
+- Writing to `/usr/local/bin/` (native host)
+- Firefox native messaging (path resolution fails)
+- Systemd service installation
+- Per-user extension setup
+
+**Use DEB/RPM/AppImage instead.**
+
+### AppImage
+- No systemd background service support
+- No package manager auto-updates
+- Use DEB/RPM for production deployments
+
+---
+
+## File Locations
+
+| Component | Location |
+|-----------|----------|
+| App config | `~/.config/focusbear/` |
+| App data | `~/.local/share/focusbear/` |
+| Native host | `/usr/local/bin/focusbear-native-host` |
+| Firefox manifest (system) | `/usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json` |
+| Firefox manifest (user) | `~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json` |
+| Chrome manifest | `~/.config/google-chrome/NativeMessagingHosts/com.focusbear.native_host.json` |
+| Logs | `/tmp/focusbear-native-host.log` |
+| Socket | `/tmp/focusbear.sock` (runtime only) |
+
+---
+
+## Documentation
+
+- [URL Blocking Architecture](docs/BLOCKING.md) - How the native messaging system works
+- [RPM Packaging Guide](docs/RPM_PACKAGING_GUIDE.md) - RPM-specific details
+- [Flatpak Limitations](docs/FLATPAK_LIMITATIONS.md) - Why Flatpak won't work
+- [CI/CD Pipeline](docs/PACKAGING\&CI-PIPELINE.md) - GitHub Actions setup
+- [Native Messaging Guide](docs/NATIVE-MESSAGING-HOST_PACKAGING_GUIDE.md) - Full technical details
+
+---
+
+## Secrets
+
+Auth0 credentials are stored in GitHub repository secrets:
+- `VITE_AUTH0_DOMAIN`
+- `VITE_AUTH0_CLIENT_ID`
+
+These are automatically injected during CI builds and embedded in the production bundle.
+
+For local development, create a `.env` file:
+```env
+VITE_AUTH0_DOMAIN=dev-xxxx.us.auth0.com
+VITE_AUTH0_CLIENT_ID=your_client_id
+```
+
+---
+
+## Support
+
+- **Issues:** GitHub Issues
+- **Docs:** See links above
+- **Video Overview:** [Project Overview](https://drive.google.com/file/d/1Af-z7W5sLIHynJB9LSC3MY7zyKFEmIZy/view?usp=sharing)
+
+---
+
+## Version
+
+**Focus Bear v1.0.0** - Linux Distraction Blocker
