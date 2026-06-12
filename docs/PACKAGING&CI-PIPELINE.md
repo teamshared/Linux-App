@@ -1,149 +1,144 @@
-# Sprint 1 Product Backlog Report
+# CI Pipeline Documentation
 
-## Items Covered
+## Overview
 
-- **Item A:** `.deb` packaging for Debian-based Linux (PBI27)
-- **Item B:** Clean Uninstall to remove related files (PBI31)
-- **Item C:** CI pipeline so developers never build packages locally (PBI32)
+The CI pipeline is defined in `.github/workflows/build-deb.yml`. It runs on an `ubuntu-latest` GitHub Actions runner and automatically builds three distribution packages (AppImage, .deb, and .rpm) whenever code is pushed to the repository. No local build environment is required from developers.
 
 ---
 
-## Item A: `.deb` Packaging
+## Pipeline Steps
 
-Installing via `apt` gives users:
+The pipeline executes the following steps:
 
-- Automatic resolution and installation of runtime dependencies (`python3`, `mitmproxy`)
-- A desktop launcher entry so Focus Bear appears in GNOME, KDE, and other DEs
-- Registration of the `focusbear://` URL protocol handler for Auth0 callbacks
-- A clean removal path — `apt remove focusbear` runs a cleanup script that removes all runtime files the app wrote outside its install directory
+### 1. Checkout Code
 
-### Current Implementation
+Checks out the source code using GitHub Actions checkout action (v4).
 
-The configuration lives in `package.json` under the `build` key. `electron-builder` reads it and calls `dpkg-deb` (via `fakeroot`) to produce the final `.deb`.
+### 2. Node.js Setup
 
-**Relevant config:**
+Sets up Node.js v24 with npm cache enabled for faster dependency installation.
 
-```json
-"deb": {
-  "depends": ["python3", "mitmproxy"],
-  "afterRemove": "build/scripts/afterRemove.sh"
-}
-```
+### 3. Cache Electron Binaries
 
-### What Gets Installed on the User's Machine
+Caches `~/.cache/electron` (~100 MB) keyed by `package-lock.json` hash. This significantly speeds up subsequent runs by avoiding re-downloading Electron binaries.
 
-```
-/opt/focusbear/
-  focusbear                        // Electron binary
+### 4. Cache electron-builder Tools
 
-/usr/bin/focusbear                 // Symlink → /opt/focusbear/focusbear
+Caches `~/.cache/electron-builder` to speed up the packaging step. electron-builder downloads platform-specific tools on first run; caching reuses them.
 
-/usr/share/applications/
-  focusbear.desktop                // Desktop launcher (auto-generated)
+### 5. Install System Dependencies
 
-/usr/share/mime/packages/
-  focusbear.xml                    // focusbear:// protocol registration
-```
+Installs required system packages:
+- `fakeroot` — Allows electron-builder to create `.deb` packages without root privileges
+- `rpm` — Provides rpmbuild, required by electron-builder to assemble `.rpm` packages on an Ubuntu runner
+- `zip` — Declared as a runtime dependency; the app uses it on first launch to create the `focusbear-extension.xpi` file so snap Firefox can load the extension from a single file
 
-### Runtime Files Created by the App (not the package)
+### 6. Make Installer Scripts Executable
 
-```
-~/.config/focusbear/               // Electron userData: settings, auth tokens
-~/.mitmproxy/                      // mitmproxy CA certificate
-/tmp/focusbear-blocklist.txt       // Active URL blocklist
-/tmp/focusbear-keywords.txt        // Active keyword list
-~/.focus_proxy_env                 // Proxy state file
-```
+Sets executable permissions on post-install and pre-uninstall scripts:
+- `build/postinst` — Debian post-installation script
+- `build/prerm` — Debian pre-removal script
+- `build/rpm-postinst` — RPM post-installation script
+- `build/rpm-prerm` — RPM pre-removal script
 
-### How to Install
+These scripts must be executable or dpkg/rpm will refuse to run them.
 
-```bash
-# Preferred - apt resolves dependencies automatically
-sudo apt install ./focusbear-1.0.0-amd64.deb
+### 7. Install npm Dependencies
 
-# Low-level - dpkg only, then fix missing deps
-sudo dpkg -i focusbear-1.0.0-amd64.deb
-sudo apt-get install -f
-```
+Runs `npm ci` (clean install) for reproducible dependency installation.
 
-### How to Uninstall
+### 8. Inject Auth0 Secrets
 
-```bash
-sudo apt remove focusbear
-```
+Creates a `.env` file with Auth0 credentials from GitHub repository secrets:
+- `VITE_AUTH0_DOMAIN` — Auth0 tenant domain
+- `VITE_AUTH0_CLIENT_ID` — Auth0 application client ID
 
-### How to Build Locally
+These are injected at build time and embedded into the Vite bundle via `import.meta.env.VITE_*`.
 
-```bash
-# Prerequisites on a Debian/Ubuntu machine
-sudo apt-get install fakeroot python3 mitmproxy
+### 9. Verify Secret Format
 
-# Install Node dependencies
-npm ci
+Outputs a partial verification of secrets (first 4 characters only) to confirm they were injected correctly without exposing sensitive data in logs.
 
-# Provide Auth0 credentials in env file
-# .env.production
+### 10. Build and Package
 
-# Build — produces dist/focusbear-1.0.0-amd64.deb
-npm run package:all
-```
+Runs `npm run package:full`, which:
+- Builds the React frontend with Vite → `dist-react/`
+- Packages with electron-builder → `dist/`
+  - `focusbear-X.X.X-x86_64.AppImage` — Universal Linux format
+  - `focusbear-X.X.X-amd64.deb` — Debian/Ubuntu/Linux Mint
+  - `focusbear-X.X.X-x86_64.rpm` — Fedora/RHEL/openSUSE
+
+### 11. Upload Artifacts
+
+Uploads each package format as separate GitHub Actions artifacts:
+- `focusbear-linux-AppImage`
+- `focusbear-linux-deb`
+- `focusbear-linux-rpm`
+
+These artifacts are available for download from the Actions run for 90 days (default GitHub retention).
 
 ---
 
-## Item B: Cleanup
+## Post-Installation Setup
 
-Clean uninstall is implemented at two levels, which together ensure nothing is left behind regardless of how the user removes the app:
+When users install the packages, the post-installation scripts automatically handle:
 
-- **Layer 1 — In-app cleanup:** Settings > Uninstall > "Clean Up App Data"
-- **Layer 2 — Package manager hook:** runs `afterRemove.sh` automatically on `apt remove`
+**Debian/Ubuntu (postinst):**
+- Sets chrome-sandbox SUID so Electron's process sandbox works
+- Creates `/usr/bin/focusbear` symlink for PATH access
+- Refreshes the desktop application database
+- Deploys native messaging host to `/usr/local/bin/focusbear-native-host`
+- Installs Firefox native messaging manifest to `/usr/lib/mozilla/native-messaging-hosts/`
+- Checks for and installs missing system dependencies
 
-Both layers are needed. A user may run in-app cleanup before uninstalling (best practice). But if they skip that step and go straight to `apt remove`, the `afterRemove.sh` script is the safety net.
-
-The cleanup process:
-
-1. Deletes `/tmp/focusbear-blocklist.txt` and `/tmp/focusbear-keywords.txt`
-2. Deletes `~/.focus_proxy_env`
-3. Deletes `settings.json` from the Electron userData directory
-
-### `afterRemove.sh`
-
-Located at `build/scripts/afterRemove.sh`. Runs automatically as a `postrm` script when `apt remove focusbear` is executed. It cleans files that exist outside the package's install prefix (which `dpkg` cannot track):
-
-```bash
-# Shared temp files
-rm -f /tmp/focusbear-blocklist.txt
-rm -f /tmp/focusbear-keywords.txt
-
-# Per-user data (iterates all home directories including /root)
-for user_home in /root /home/*; do
-  rm -f "$user_home/.focus_proxy_env"
-  rm -rf "$user_home/.config/focusbear"    # Electron userData
-  rm -rf "$user_home/.config/Focus Bear"   # Alternate casing
-done
-```
+**RPM-based (rpm-postinst):**
+- Performs equivalent setup for Fedora/RHEL systems using rpm-specific paths and package managers
 
 ---
 
-## Item C: CI Pipeline
+## Auth0 Secret Configuration
 
-The pipeline is defined in `.github/workflows/build-deb.yml`. It runs on an `ubuntu-latest` GitHub Actions runner and produces `.deb` and AppImage artifacts without any local build environment needed.
+Auth0 credentials must be configured in GitHub repository settings before the pipeline can build:
 
-### Pipeline Steps
+1. Go to Repository Settings → Secrets and variables → Actions
+2. Add `VITE_AUTH0_DOMAIN` with your Auth0 tenant domain
+3. Add `VITE_AUTH0_CLIENT_ID` with your Auth0 application ID
 
-| Step | Description |
-|------|-------------|
-| 1 | Checkout source code |
-| 2 | Setup Node.js 24 with npm cache |
-| 3 | Cache `~/.cache/electron` (~100 MB, keyed by `package-lock.json` hash) |
-| 4 | Cache `~/.cache/electron-builder` |
-| 5 | `apt install fakeroot` (required by electron-builder to create `.deb`) |
-| 6 | `npm ci` (clean reproducible install) |
-| 7 | Inject Auth0 secrets → `.env` (`VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID` from repo secrets) |
-| 8 | Verify secret format (partial reveal: first 4 chars only) |
-| 9 | `npm run package:all` (Vite build → electron-builder AppImage + deb) |
-| 10 | Upload `focusbear-linux-AppImage` as artifact |
-| 11 | Upload `focusbear-linux-deb` as artifact |
+These secrets are:
+- Never printed to logs
+- Masked in workflow output
+- Injected only at build time
+- Embedded into the final JavaScript bundle
 
-### Auth0 Secret Handling
+---
 
-Auth0 credentials are stored as GitHub Actions repository secrets (`VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`). They are written into a `.env` file at Step 7 and read by Vite at build time via `import.meta.env.VITE_*`. They are baked into the built JavaScript bundle.
+## Deployment Workflow
+
+1. Developer pushes code to repository
+2. GitHub Actions pipeline triggers automatically
+3. All three packages are built in parallel caching
+4. Artifacts are uploaded to the Actions run
+5. Team downloads artifacts from the run
+6. Packages are tested on respective Linux distributions
+7. Once verified, packages are released to users via GitHub Releases or package repositories
+
+---
+
+## Pipeline Configuration
+
+The pipeline configuration is defined in `.github/workflows/build-deb.yml`. Key configuration details:
+
+- **Trigger:** Runs on every push (can be restricted to specific branches by uncommenting the `branches` filter)
+- **Runner:** `ubuntu-latest` (Ubuntu 22.04 LTS)
+- **Node Version:** v24
+- **Cache Strategy:** npm dependencies, Electron binaries, and electron-builder tools are cached to reduce build time
+- **Artifact Retention:** 90 days (GitHub default)
+
+---
+
+## Notes
+
+- The pipeline ensures consistent, reproducible builds across all three package formats
+- Developers never need to build packages locally; the CI/CD handles all packaging
+- Native messaging host and Firefox extension installation is automated during package installation
+- The dependency checker runs on first launch to ensure all system requirements are met
