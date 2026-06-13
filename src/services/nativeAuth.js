@@ -90,8 +90,13 @@ class NativeAuthService {
         `code_challenge=${codeChallenge}&` +
         `code_challenge_method=${codeChallengeMethod}`;
 
-      console.log('[NativeAuth] Redirecting to Auth0...');
-      window.location.href = authUrl;
+      console.log('[NativeAuth] Opening auth window with URL:', authUrl);
+      if (window.api && window.api.openAuthWindow) {
+        window.api.openAuthWindow(authUrl);
+      } else {
+        console.warn('[NativeAuth] Electron IPC not available, falling back to window.location');
+        window.location.href = authUrl;
+      }
     } catch (error) {
       console.error('[NativeAuth] Login failed:', error);
       throw error;

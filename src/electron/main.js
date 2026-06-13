@@ -1,18 +1,450 @@
 import { join, dirname } from 'path';
+import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import {createTray, getTrayWindow} from "./tray-handler.js"
 import { createWebView, switchToWebView, hideAllWebViews, webViewConfigs, resizeCurrentWebView, getCurrentActiveWebViewId } from './webview-handler.js';
-import { exec, execFile, spawn } from 'child_process';
+import { exec, execFile, spawn, execSync } from 'child_process';
+import { promisify } from 'util';
 import "./Blocker.js"
+import { setBroadcastFunction } from './Blocker.js';
 import { focusState } from './focusState.js';
 import SimpleUrlGrabber from './simpleUrlGrabber.js';
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
+import { createServer } from 'net';
+import { unlink } from 'fs/promises';
 
 dotenv.config();
+
+const execFileAsync = promisify(execFile);
+
+const SOCKET_PATH = '/tmp/focusbear.sock';
+let socketServer = null;
+const socketClients = new Map();       // socket → {browser: string|null, lastPing: number}
+let currentBlocklist = [];
+let currentWhitelist = [];
+let warningWindow = null;
+const connectedBrowsers = new Set();
+const browserLastConnected = new Map();
+let pingMonitorActive = false;
+let extensionWarningTimer = null;
+let extensionWarningActive = false;
+let warningBrowserId = null;
+
+let selectedBrowsers = ['firefox']; // persisted from setup; updated via applySettings
+
+const BROWSER_PGREP_PATTERNS = {
+  firefox:  ['firefox'],
+  chrome:   ['google-chrome'],
+  chromium: ['chromium'],
+  brave:    ['brave'],
+  opera:    ['opera'],
+};
+
+const BROWSER_KILL_TARGETS = {
+  firefox:  ['firefox', 'firefox-bin', 'firefox-esr'],
+  chrome:   ['google-chrome'],
+  chromium: ['chromium', 'chromium-browser'],
+  brave:    ['brave', 'brave-browser'],
+  opera:    ['opera'],
+};
+
+function getWhitelistPath() {
+  return join(app.getPath('userData'), 'whitelist.json');
+}
+
+async function loadWhitelistFromDisk() {
+  try {
+    const data = await fs.readFile(getWhitelistPath(), 'utf8');
+    const entries = JSON.parse(data);
+    currentWhitelist = entries.filter(e => e.expiresAt > Date.now());
+    console.log(`[Whitelist] Loaded ${currentWhitelist.length} active entries from disk`);
+  } catch (error) {
+    currentWhitelist = [];
+  }
+}
+
+async function saveWhitelistToDisk(entries) {
+  try {
+    await fs.writeFile(getWhitelistPath(), JSON.stringify(entries, null, 2));
+  } catch (error) {
+    console.error('[Whitelist] Failed to save:', error.message);
+  }
+}
+
+async function startSocketServer() {
+  try {
+    await unlink(SOCKET_PATH);
+  } catch { /* stale socket, ignore */ }
+
+  socketServer = createServer((socket) => {
+    console.log('[Socket] Native host connected');
+    socketClients.set(socket, { browser: null, lastPing: Date.now() });
+
+    // Push current blocklist immediately so new connections don't wait for a GET_BLOCKLIST
+    if (currentBlocklist.length > 0) {
+      socket.write(JSON.stringify({
+        type: 'BLOCKLIST_UPDATE',
+        data: currentBlocklist,
+        timestamp: Date.now()
+      }) + '\n');
+    }
+
+    // Push whitelist so extension can restore it after reinstall
+    socket.write(JSON.stringify({
+      type: 'WHITELIST_UPDATE',
+      data: currentWhitelist.filter(e => e.expiresAt > Date.now()),
+      timestamp: Date.now()
+    }) + '\n');
+
+    socket.on('data', (data) => {
+      const lines = data.toString().split('\n').filter(line => line.trim());
+
+      lines.forEach(line => {
+        try {
+          const message = JSON.parse(line);
+          const browserTag = message.browser ? ` (${message.browser})` : '';
+          console.log(`[Socket] Received from native host: ${message.type}${browserTag}`);
+
+          if (socketClients.has(socket)) socketClients.get(socket).lastPing = Date.now();
+
+          if (message.type === 'NATIVE_HOST_CONNECTED') {
+            if (message.browser) {
+              // Evict stale socket for this browser — old host may not have cleaned up
+              for (const [s, c] of socketClients) {
+                if (s !== socket && c.browser === message.browser) {
+                  console.log(`[Socket] Evicting stale ${message.browser} socket (new host connected)`);
+                  s.destroy();
+                  socketClients.delete(s);
+                }
+              }
+              if (socketClients.has(socket)) socketClients.get(socket).browser = message.browser;
+              browserLastConnected.set(message.browser, Date.now());
+              console.log(`[Socket] Host identified as ${message.browser} on connect`);
+            }
+          } else if (message.type === 'PING') {
+            const browser = message.browser || 'unknown';
+            if (socketClients.has(socket)) socketClients.get(socket).browser = browser;
+            browserLastConnected.set(browser, Date.now());
+            if (!connectedBrowsers.has(browser)) {
+              connectedBrowsers.add(browser);
+              if (mainWindow) mainWindow.webContents.send('extension-connected', browser);
+            }
+            if (!warningBrowserId || warningBrowserId === browser) cancelExtensionWarning();
+          } else if (message.type === 'GET_BLOCKLIST') {
+            console.log(`[Socket] Sending blocklist: ${currentBlocklist.length} entries`);
+            socket.write(JSON.stringify({
+              type: 'BLOCKLIST_RESPONSE',
+              data: currentBlocklist,
+              timestamp: Date.now()
+            }) + '\n');
+          } else if (message.type === 'GET_WHITELIST') {
+            const active = currentWhitelist.filter(e => e.expiresAt > Date.now());
+            console.log(`[Socket] Sending whitelist: ${active.length} entries`);
+            socket.write(JSON.stringify({
+              type: 'WHITELIST_RESPONSE',
+              data: active,
+              timestamp: Date.now()
+            }) + '\n');
+          } else if (message.type === 'WHITELIST_UPDATE') {
+            currentWhitelist = message.data.filter(e => e.expiresAt > Date.now());
+            console.log(`[Socket] Whitelist updated: ${currentWhitelist.length} entries`);
+            saveWhitelistToDisk(currentWhitelist);
+          }
+        } catch (error) {
+          console.error('[Socket] Error parsing message:', error);
+        }
+      });
+    });
+
+    socket.on('close', () => {
+      console.log('[Socket] Native host disconnected');
+      const client = socketClients.get(socket);
+      socketClients.delete(socket);
+      const browser = client?.browser;
+      if (browser && ![...socketClients.values()].some(c => c.browser === browser)) {
+        connectedBrowsers.delete(browser);
+      }
+      // Chrome: SW suspension is normal — alarm reconnects within 60s. 70s grace avoids false positives.
+      // Firefox: MV2 background is persistent, so disconnect means crash/disable. 5s grace.
+      if (pingMonitorActive && browser) {
+        const closedBrowser = browser;
+        const gracePeriod = closedBrowser === 'firefox' ? 5000 : 70000;
+        setTimeout(async () => {
+          // Cancel if browser already reconnected during grace period
+          if ([...socketClients.values()].some(c => c.browser === closedBrowser)) return;
+          if (!extensionWarningActive && await isBrowserRunning(closedBrowser)) {
+            console.log(`[PingMonitor] Socket closed, ${closedBrowser} still running after grace — showing warning`);
+            showExtensionWarning(closedBrowser);
+          }
+        }, gracePeriod);
+        // If browser unknown (PING never received before disconnect), browserScan handles it
+      }
+    });
+
+    socket.on('error', (error) => {
+      console.error('[Socket] Client error:', error.message);
+    });
+  });
+
+  socketServer.listen(SOCKET_PATH, () => {
+    console.log(`[Socket] Server listening on ${SOCKET_PATH}`);
+  });
+
+  socketServer.on('error', (error) => {
+    console.error('[Socket] Server error:', error);
+  });
+}
+
+function broadcastBlocklistUpdate(blocklist) {
+  currentBlocklist = blocklist;
+
+  const message = JSON.stringify({
+    type: 'BLOCKLIST_UPDATE',
+    data: blocklist,
+    timestamp: Date.now()
+  }) + '\n';
+
+  console.log(`[Socket] Broadcasting blocklist update to ${socketClients.size} clients`);
+
+  for (const socket of socketClients.keys()) {
+    try {
+      socket.write(message);
+    } catch (error) {
+      console.error('[Socket] Error broadcasting to client:', error);
+    }
+  }
+}
+
+// browserId: check only that browser. Omit to check all selected browsers.
+async function isBrowserRunning(browserId) {
+  const ids = browserId ? [browserId] : selectedBrowsers;
+  for (const id of ids) {
+    for (const p of (BROWSER_PGREP_PATTERNS[id] || [])) {
+      try {
+        await execFileAsync('pgrep', ['-f', p]);
+        return true;
+      } catch { /* no match */ }
+    }
+  }
+  return false;
+}
+
+async function killBrowsers(browserId) {
+  const targets = BROWSER_KILL_TARGETS[browserId] || [];
+  console.log(`[PingMonitor] Killing ${browserId} (${targets.join(', ')})`);
+  await Promise.all(targets.map(name => execFileAsync('pkill', ['-x', name]).catch(() => {})));
+}
+
+function destroyWarningWindow() {
+  if (warningWindow) {
+    const win = warningWindow;
+    warningWindow = null;
+    win.destroy();
+  }
+}
+
+function cancelExtensionWarning() {
+  if (extensionWarningTimer) {
+    clearTimeout(extensionWarningTimer);
+    extensionWarningTimer = null;
+  }
+  extensionWarningActive = false;
+  destroyWarningWindow();
+}
+
+function showExtensionWarning(browserId) {
+  if (extensionWarningActive) return;
+  extensionWarningActive = true;
+  warningBrowserId = browserId || null;
+  console.log(`[PingMonitor] Showing extension disconnected warning (browser: ${browserId})`);
+
+  const timerBrowserId = browserId || null;
+  extensionWarningTimer = setTimeout(async () => {
+    extensionWarningActive = false;
+    extensionWarningTimer = null;
+    destroyWarningWindow();
+    await killBrowsers(timerBrowserId);
+  }, 30000);
+
+  warningWindow = new BrowserWindow({
+    width: 600,
+    height: 400,
+    resizable: false,
+    alwaysOnTop: true,
+    title: 'Focus Bear — Extension Warning',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+  const BROWSER_NAMES = { firefox: 'Firefox', chrome: 'Chrome', chromium: 'Chromium', brave: 'Brave', opera: 'Opera' };
+  const browserName = BROWSER_NAMES[browserId] || 'your browser';
+  warningWindow.loadFile(join(__dirname, 'extension-warning.html'), { query: { browser: browserName } });
+  warningWindow.webContents.once('did-finish-load', () => {
+    if (!warningWindow) return;
+    warningWindow.webContents.executeJavaScript('document.querySelector(".card").getBoundingClientRect().height + 48')
+      .then(h => {
+        if (!warningWindow) return;
+        const [w] = warningWindow.getContentSize();
+        warningWindow.setContentSize(w, h);
+      })
+      .catch(() => {});
+  });
+  warningWindow.on('closed', () => { warningWindow = null; }); // handles manual X click
+}
+
+function startPingMonitor() {
+  if (pingMonitorActive) return;
+  pingMonitorActive = true;
+
+  // Firefox MV2 background is persistent — detect hung connections via ping silence.
+  // Chrome MV3 SWs sleep and reconnect via alarm; socket-close grace handles disconnect detection.
+  setInterval(async () => {
+    if (extensionWarningActive) return;
+    const now = Date.now();
+    for (const [, client] of socketClients) {
+      if (client.browser !== 'firefox') continue;
+      if (now - client.lastPing > 20000 && await isBrowserRunning('firefox')) {
+        showExtensionWarning('firefox');
+        break;
+      }
+    }
+  }, 5000);
+
+  // Detect browser running without extension ever connecting (startup / disabled-before-launch).
+  // Firefox: 5s grace (persistent background connects immediately).
+  // Chrome: 70s grace (alarm fires within 60s if extension enabled, then reconnects).
+  const BROWSER_SCAN_GRACE = { firefox: 5000 };
+  const DEFAULT_SCAN_GRACE = 70000;
+
+  const browserScan = async () => {
+    if (extensionWarningActive) return;
+    const now = Date.now();
+    for (const browserId of selectedBrowsers) {
+      if (connectedBrowsers.has(browserId)) continue;
+      if (!await isBrowserRunning(browserId)) continue;
+      const grace = BROWSER_SCAN_GRACE[browserId] ?? DEFAULT_SCAN_GRACE;
+      const lastSeen = browserLastConnected.get(browserId) ?? 0;
+      if (now - lastSeen < grace) continue;
+      console.log(`[BrowserScan] ${browserId} running without extension for >${grace}ms — showing warning`);
+      showExtensionWarning(browserId);
+      break;
+    }
+  };
+
+  setTimeout(browserScan, 20000); // initial check — Firefox connects immediately; Chrome needs ~60s for alarm
+  setInterval(browserScan, 90000);
+}
+
+// Install native messaging host on startup — runs in-process, no subprocess needed.
+// Files are copied into ~/.local/share/focusbear/ so snap Firefox's sandbox can reach them.
+const CHROME_EXTENSION_ID = 'dhjmacpmdnfhpghleebnngdhikmffcem';
+
+async function installNativeMessaging() {
+  try {
+    const nativeSrcDir = app.isPackaged
+      ? join(process.resourcesPath, 'native-messaging')
+      : join(__dirname, '..', 'native-messaging');
+    const extensionSrcDir = app.isPackaged
+      ? join(process.resourcesPath, 'extension')
+      : join(__dirname, '..', 'extension');
+    const chromeExtSrcDir = app.isPackaged
+      ? join(process.resourcesPath, 'extension-chrome')
+      : join(__dirname, '..', 'extension-chrome');
+
+    const localNativeDir = join(homedir(), '.local', 'share', 'focusbear', 'native-messaging');
+    await fs.mkdir(localNativeDir, { recursive: true });
+    await fs.copyFile(join(nativeSrcDir, 'host.js'),     join(localNativeDir, 'host.js'));
+    await fs.copyFile(join(nativeSrcDir, 'package.json'), join(localNativeDir, 'package.json'));
+
+    const localExtDir = join(homedir(), '.local', 'share', 'focusbear', 'extension');
+    await fs.mkdir(localExtDir, { recursive: true });
+    for (const f of await fs.readdir(extensionSrcDir)) {
+      await fs.copyFile(join(extensionSrcDir, f), join(localExtDir, f)).catch(() => {});
+    }
+
+    // Wrapper at ~/.local/bin points to the home-dir copy of host.js
+    const wrapperDir = join(homedir(), '.local', 'bin');
+    const wrapperPath = join(wrapperDir, 'focusbear-native-host');
+    await fs.mkdir(wrapperDir, { recursive: true });
+    await fs.writeFile(wrapperPath, `#!/bin/sh\nexec node "${join(localNativeDir, 'host.js')}" "$@"\n`);
+    await fs.chmod(wrapperPath, 0o755);
+
+    // Write Firefox manifest to all known locations (regular + snap)
+    const firefoxManifest = JSON.stringify({
+      name: 'com.focusbear.native_host',
+      description: 'Focus Bear Native Messaging Host',
+      path: wrapperPath,
+      type: 'stdio',
+      allowed_extensions: ['focusbear@focusbear.io']
+    }, null, 2);
+    for (const dir of [
+      join(homedir(), '.mozilla', 'native-messaging-hosts'),
+      join(homedir(), 'snap', 'firefox', 'common', '.mozilla', 'native-messaging-hosts'),
+    ]) {
+      await fs.mkdir(dir, { recursive: true }).catch(() => {});
+      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), firefoxManifest).catch(() => {});
+    }
+
+    // Write Chrome/Chromium native messaging manifests
+    const chromeManifest = JSON.stringify({
+      name: 'com.focusbear.native_host',
+      description: 'Focus Bear Native Messaging Host',
+      path: wrapperPath,
+      type: 'stdio',
+      allowed_origins: [`chrome-extension://${CHROME_EXTENSION_ID}/`]
+    }, null, 2);
+    for (const dir of [
+      join(homedir(), '.config', 'google-chrome', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'google-chrome-beta', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'google-chrome-unstable', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'chromium', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'BraveSoftware', 'Brave-Browser', 'NativeMessagingHosts'),
+      join(homedir(), '.config', 'opera', 'NativeMessagingHosts'),
+    ]) {
+      await fs.mkdir(dir, { recursive: true }).catch(() => {});
+      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), chromeManifest).catch(() => {});
+    }
+
+    // Copy Chrome extension files and pack as .zip
+    const localChromeExtDir = join(homedir(), '.local', 'share', 'focusbear', 'extension-chrome');
+    await fs.mkdir(localChromeExtDir, { recursive: true });
+    for (const f of await fs.readdir(chromeExtSrcDir).catch(() => [])) {
+      await fs.copyFile(join(chromeExtSrcDir, f), join(localChromeExtDir, f)).catch(() => {});
+    }
+    const chromeZipPath = join(homedir(), '.local', 'share', 'focusbear', 'focusbear-extension-chrome.zip');
+    try {
+      try { await fs.unlink(chromeZipPath); } catch {}
+      execSync(`cd "${localChromeExtDir}" && zip -r "${chromeZipPath}" .`, { stdio: 'pipe' });
+      console.log('[Native Messaging] Chrome extension .zip ready at', chromeZipPath);
+      console.log('[Native Messaging] Chrome: chrome://extensions → Load unpacked → select', localChromeExtDir);
+    } catch (zipErr) {
+      console.warn('[Native Messaging] Could not create Chrome .zip:', zipErr.message);
+    }
+
+    // Pack Firefox extension as .xpi (zip) so snap Firefox's portal grants access to a single file
+    // containing all extension scripts — selecting manifest.json alone only mounts that one file.
+    const xpiPath = join(homedir(), '.local', 'share', 'focusbear', 'focusbear-extension.xpi');
+    try {
+      try { await fs.unlink(xpiPath); } catch {}
+      execSync(`cd "${localExtDir}" && zip -r "${xpiPath}" .`, { stdio: 'pipe' });
+      console.log('[Native Messaging] Host installed at', wrapperPath);
+      console.log('[Native Messaging] Extension .xpi ready at', xpiPath);
+      console.log('[Native Messaging] Firefox: about:debugging → Load Temporary Add-on → select', xpiPath);
+    } catch (zipErr) {
+      console.warn('[Native Messaging] Could not create .xpi:', zipErr.message);
+      console.log('[Native Messaging] Host installed at', wrapperPath);
+      console.log('[Native Messaging] Load extension from:', join(localExtDir, 'manifest.json'));
+    }
+  } catch (error) {
+    console.error('[Native Messaging] Setup failed:', error.message);
+  }
+}
 
 console.log('[Main Process] Starting Focus Bear...');
 console.log('[Main Process] App packaged:', app.isPackaged);
@@ -30,13 +462,12 @@ const urlGrabber = new SimpleUrlGrabber();
 
 // Unified focus session state
 let isFocusActive = false;
-let mitmproxyProcess = null;
 
 function getWebviewContainerBounds() {
     const bounds = mainWindow.getBounds();
     const padding = 20;
     const topOffset = 140;
-    
+
     return {
         x: padding,
         y: topOffset,
@@ -53,12 +484,35 @@ if (!gotTheLock) {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     }
   });
 }
 
 app.on("ready", function(){
+    // Start socket server for native messaging
+    startSocketServer();
+
+    // Set up broadcast function for Blocker.js
+    setBroadcastFunction(broadcastBlocklistUpdate);
+
+    // Load persisted whitelist before socket server accepts connections
+    loadWhitelistFromDisk();
+
+    // Install native messaging host
+    installNativeMessaging();
+
+    // Only monitor extension liveness after setup is complete.
+    // Checked from disk so the decision is made before the renderer loads.
+    fs.readFile(getSettingsPath(), 'utf8')
+      .then(data => {
+        const s = JSON.parse(data);
+        if (s.selectedBrowsers) selectedBrowsers = s.selectedBrowsers;
+        if (s.setupComplete) startPingMonitor();
+      })
+      .catch(() => {}); // first run — no settings file yet, skip monitor
+
     mainWindow = new BrowserWindow({
         autoHideMenuBar: true,
         height: 850,
@@ -69,7 +523,7 @@ app.on("ready", function(){
             preload: join(app.getAppPath(), "/src/electron/preload.js"),
             webSecurity: false,
         },
-        devTools: true,
+        devTools: false,
     });
     tray = createTray(mainWindow)
 
@@ -128,10 +582,10 @@ app.on("ready", function(){
 
     mainWindow.on('close', function(event) {
         if (exitflag){
-            return 
+            return
         }
-        event.preventDefault(); 
-        mainWindow.hide();      
+        event.preventDefault();
+        mainWindow.hide();
     });
 
 
@@ -168,6 +622,24 @@ app.on("ready", function(){
     });
 });
 
+ipcMain.handle('get-extension-connected', () => [...connectedBrowsers]);
+
+ipcMain.handle('get-local-settings', async () => {
+  try {
+    const data = await fs.readFile(getSettingsPath(), 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.on('setup-complete', () => { startPingMonitor(); });
+
+ipcMain.on('extension-warning-close-browser', async () => {
+  cancelExtensionWarning();
+  await killBrowsers(warningBrowserId);
+});
+
 ipcMain.on('quit-channel', function() {
     exitflag = true
     app.quit();
@@ -178,49 +650,21 @@ ipcMain.on('focus-session-true', function(event) {
         event.sender.send('focus-session-result', 'Focus session already active');
         return;
     }
-    
-    startMitmproxyBlocker((error, result) => {
-        if (!error) {
-            isFocusActive = true;
-            focusState.setActive(true);
-            broadcastFocusState(true);
-            console.log('Focus session started with mitmproxy');
+
+    // Native messaging extension handles blocking
+    isFocusActive = true;
+    focusState.setActive(true);
+    broadcastFocusState(true);
+    broadcastBlocklistUpdate(currentBlocklist);
+    console.log('Focus session started (native messaging extension)');
+
+    try {
+        if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('focus-session-result', 'Focus session started');
         }
-        
-        try {
-            if (event.sender && !event.sender.isDestroyed()) {
-                event.sender.send('focus-session-result', error ? `Error: ${result}` : result);
-            }
-        } catch (e) {
-            console.log('Could not send result to original sender (window destroyed)');
-        }
-    });
-    
-    //Uncomment if using hosts file method
-    /*
-    const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
-    const blocklistPath = '/tmp/focusbear-blocklist.txt';
-    const command = `pkexec node "${scriptPath}" block --list "${blocklistPath}"`;
-    
-    console.log(`Starting focus session: ${command}`);
-    
-    exec(command, (error, stdout, stderr) => {
-        if (!error) {
-            isFocusActive = true;
-            focusState.setActive(true)
-            broadcastFocusState(true);
-            console.log('Focus session started with hosts file');
-        }
-        const result = error ? `Error: ${stderr || error.message}` : stdout;
-        try {
-            if (event.sender && !event.sender.isDestroyed()) {
-                event.sender.send('focus-session-result', result);
-            }
-        } catch (e) {
-            console.log('Could not send result to original sender (window destroyed)');
-        }
-    });
-    */
+    } catch (e) {
+        console.log('Could not send result to original sender (window destroyed)');
+    }
 });
 
 ipcMain.on('focus-session-false', function(event) {
@@ -228,14 +672,13 @@ ipcMain.on('focus-session-false', function(event) {
         event.sender.send('focus-session-result', 'Focus session already inactive');
         return;
     }
-    
-    // Stop mitmproxy blocker
-    stopMitmproxyBlocker();
+
+    // Native messaging extension handles blocking
     isFocusActive = false;
     focusState.setActive(false);
     broadcastFocusState(false);
     console.log('Focus session ended');
-    
+
     try {
         if (event.sender && !event.sender.isDestroyed()) {
             event.sender.send('focus-session-result', 'Focus session stopped');
@@ -243,33 +686,6 @@ ipcMain.on('focus-session-false', function(event) {
     } catch (e) {
         console.log('Could not send result to original sender (window destroyed)');
     }
-    
-    // Uncomment if using hosts file method
-    /*
-    const scriptPath = join(__dirname, 'focusbear_hosts_blocker.cjs');
-    const command = `pkexec node "${scriptPath}" unblock`;
-    
-    console.log(`Ending focus session: ${command}`);
-    
-    exec(command, (error, stdout, stderr) => {
-        if (!error) {
-            isFocusActive = false;
-            focusState.setActive(false);
-            broadcastFocusState(false);
-            console.log('Focus session ended');
-        }
-        
-        const result = error ? `Error: ${stderr || error.message}` : stdout;
-        
-        try {
-            if (event.sender && !event.sender.isDestroyed()) {
-                event.sender.send('focus-session-result', result);
-            }
-        } catch (e) {
-            console.log('Could not send result to original sender (window destroyed)');
-        }
-    });
-    */
 });
 
 // URL monitoring
@@ -299,7 +715,12 @@ app.on('window-all-closed', function() {
 
 app.on('before-quit', function() {
     stopMonitoring()
-    stopMitmproxyBlocker();
+
+    // Close socket server
+    if (socketServer) {
+        socketServer.close();
+        for (const socket of socketClients.keys()) socket.end();
+    }
 });
 
 app.on('will-quit', function() {
@@ -311,7 +732,7 @@ function broadcastFocusState(isActive) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('focus-state-changed', isActive);
     }
-    
+
     const trayWindow = getTrayWindow();
     if (trayWindow && !trayWindow.isDestroyed()) {
         trayWindow.webContents.send('focus-state-changed', isActive);
@@ -405,135 +826,6 @@ function handleAuthRedirect(url) {
     }
 }
 
-// SYSTEM PROXY FUNCTIONS
-function setSystemProxy(host, port, callback) {
-    const scriptPath = app.isPackaged
-        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
-        : join(__dirname, '../python/set_system_proxy.py');
-    execFile('python3', [scriptPath, 'set', host, port], (err, stdout, stderr) => {
-        if (err) {
-            console.error('Proxy set error:', stderr);
-            if (callback) callback(err, stderr);
-        } else {
-            console.log('Proxy set:', stdout);
-            if (callback) callback(null, stdout);
-        }
-    });
-}
-
-function unsetSystemProxy(callback) {
-    const scriptPath = app.isPackaged
-        ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
-        : join(__dirname, '../python/set_system_proxy.py');
-    execFile('python3', [scriptPath, 'unset'], (err, stdout, stderr) => {
-        if (err) {
-            console.error('Proxy unset error:', stderr);
-            if (callback) callback(err, stderr);
-        } else {
-            console.log('Proxy unset:', stdout);
-            if (callback) callback(null, stdout);
-        }
-    });
-}
-
-// MITMPROXY BLOCKING FUNCTIONS
-function checkCertificateExists(callback) {
-    const certPath = join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
-    fs.access(certPath)
-        .then(() => callback(true))
-        .catch(() => callback(false));
-}
-
-function startMitmproxyBlocker(callback) {
-    const scriptPath = app.isPackaged
-        ? join(process.resourcesPath, 'python', 'mitmproxy_blocker.py')
-        : join(__dirname, '../python/mitmproxy_blocker.py');
-    const proxyHost = '127.0.0.1';
-    const proxyPort = 8080;
-
-    setSystemProxy(proxyHost, proxyPort, (err, result) => {
-        if (err) {
-            callback(err, 'Failed to set system proxy');
-            return;
-        }
-
-        console.log('Starting mitmproxy blocker...');
-
-        mitmproxyProcess = spawn('mitmdump', [
-            '-s', scriptPath,
-            '--set', 'block_global=false'
-        ]);
-
-        mitmproxyProcess.stdout.on('data', (data) => {
-            console.log(`mitmproxy: ${data}`);
-        });
-
-        mitmproxyProcess.stderr.on('data', (data) => {
-            console.error(`mitmproxy error: ${data}`);
-        });
-
-        mitmproxyProcess.on('close', (code) => {
-            console.log(`mitmproxy process exited with code ${code}`);
-            mitmproxyProcess = null;
-            isFocusActive = false;
-        });
-
-        mitmproxyProcess.on('error', (error) => {
-            console.error('Failed to start mitmproxy:', error);
-            callback(error, `Failed to start mitmproxy: ${error.message}`);
-            return;
-        });
-
-        setTimeout(() => {
-            callback(null, 'mitmproxy blocker started');
-        }, 1000);
-    });
-}
-
-function stopMitmproxyBlocker() {
-    let proxyUnsetAttempted = false; // Flag to ensure proxy is unset only once
-
-    // 1. Stop mitmproxy
-    if (mitmproxyProcess) {
-        console.log('Stopping mitmproxy blocker...');
-        
-        // Use an event listener to run unset AFTER mitmproxy closes, 
-        // OR run it immediately if mitmproxy fails to stop.
-        
-        const cleanupAndUnset = () => {
-            if (!proxyUnsetAttempted) {
-                proxyUnsetAttempted = true;
-                unsetSystemProxy((err, result) => {
-                    if (err) {
-                        console.error('Failed to unset system proxy:', result);
-                    } else {
-                        console.log('System proxy unset:', result);
-                    }
-                });
-            }
-        };
-
-        // Ensure cleanup happens when the process ends (success or failure)
-        mitmproxyProcess.once('close', cleanupAndUnset);
-        mitmproxyProcess.once('error', cleanupAndUnset);
-
-        // Send kill signal (SIGTERM is preferred for graceful shutdown)
-        mitmproxyProcess.kill('SIGTERM');
-        mitmproxyProcess = null;
-        
-    } else {
-        // 2. If mitmproxy wasn't running, still try to unset the proxy just in case.
-        console.log('mitmproxy not running. Attempting proxy cleanup...');
-        unsetSystemProxy((err, result) => {
-            if (err) {
-                console.error('Failed to unset system proxy:', result);
-            } else {
-                console.log('System proxy unset:', result);
-            }
-        });
-    }
-}
-
 //Webiew Handling
 ipcMain.on('switch-webview', function(event, webViewId, metadata) {
     console.log(`[Main Process] switch-webview called for ${webViewId}`);
@@ -570,18 +862,6 @@ ipcMain.on('hide-all-webviews', function(event) {
 ipcMain.on('open-auth-window', function(event, url) {
     console.log('Opening auth window with URL:', url);
     openAuthWindow(url);
-})
-
-ipcMain.handle('check-certificate-exists', async function() {
-    return new Promise((resolve) => {
-        checkCertificateExists((exists) => {
-            resolve(exists);
-        });
-    });
-})
-
-ipcMain.handle('get-certificate-path', async function() {
-    return join(app.getPath('home'), '.mitmproxy', 'mitmproxy-ca-cert.pem');
 })
 
 
@@ -622,17 +902,17 @@ ipcMain.handle('save-settings', async (event, settings) => {
       lastModified: new Date().toISOString(),
       version: '1.0.0'
     };
-    
+
     try {
       await saveToAuth0(settingsWithMeta);
       console.log('Settings saved to Auth0');
     } catch (error) {
       console.error('Auth0 save failed, saving locally:', error.message);
     }
-    
+
     await saveLocalBackup(settingsWithMeta);
     applySettings(settings);
-    
+
     return { success: true };
   } catch (error) {
     console.error('Failed to save settings:', error);
@@ -643,12 +923,12 @@ ipcMain.handle('save-settings', async (event, settings) => {
 async function loadFromAuth0() {
   return new Promise((resolve, reject) => {
     mainWindow.webContents.send('auth0-get-settings');
-    
+
     const timeout = setTimeout(() => {
       ipcMain.removeAllListeners('auth0-settings-response');
       reject(new Error('Timeout loading from Auth0'));
     }, 5000);
-    
+
     ipcMain.once('auth0-settings-response', (event, result) => {
       clearTimeout(timeout);
       if (result.success) {
@@ -663,12 +943,12 @@ async function loadFromAuth0() {
 async function saveToAuth0(settings) {
   return new Promise((resolve, reject) => {
     mainWindow.webContents.send('auth0-save-settings', settings);
-    
+
     const timeout = setTimeout(() => {
       ipcMain.removeAllListeners('auth0-save-response');
       reject(new Error('Timeout saving to Auth0'));
     }, 10000);
-    
+
     ipcMain.once('auth0-save-response', (event, result) => {
       clearTimeout(timeout);
       if (result.success) {
@@ -692,12 +972,15 @@ async function saveLocalBackup(settings) {
 
 function applySettings(settings) {
   if (settings.urlList) {
-    const urlString = settings.urlList.join('\n');
-    fs.writeFile('/tmp/focusbear-blocklist.txt', urlString)
-      .then(() => console.log('Blocklist updated'))
-      .catch(err => console.error('Failed to update blocklist:', err));
+    console.log('Blocklist updated');
+    broadcastBlocklistUpdate(settings.urlList);
   }
-  
+
+  if (settings.selectedBrowsers) {
+    selectedBrowsers = settings.selectedBrowsers;
+    console.log('Selected browsers updated:', selectedBrowsers);
+  }
+
   console.log('Blocking mode:', settings.selectedBlockMode);
   console.log('Blocking method:', settings.selectedBlockMethod);
   console.log('Bear mode:', settings.selectedBearMode);
@@ -736,23 +1019,10 @@ ipcMain.handle('cleanup-app-data', async function() {
 
   try {
     if (isFocusActive) {
-      await stopMitmproxyBlocker();
+      isFocusActive = false;
+      focusState.setActive(false);
       details.push('Stopped active focus session');
     }
-
-    const pythonScriptPath = app.isPackaged
-      ? join(process.resourcesPath, 'python', 'set_system_proxy.py')
-      : join(app.getAppPath(), 'src', 'python', 'set_system_proxy.py');
-
-    await new Promise((resolve) => {
-      exec(`python3 "${pythonScriptPath}" unset`, (error) => {
-        if (error) {
-          console.error('Failed to unset proxy:', error);
-        }
-        details.push('Reset system proxy settings');
-        resolve();
-      });
-    });
 
     try {
       await fs.unlink('/tmp/focusbear-blocklist.txt');
@@ -766,15 +1036,6 @@ ipcMain.handle('cleanup-app-data', async function() {
       details.push('Removed keywords file');
     } catch (error) {
       console.log('Keywords file not found or already removed');
-    }
-
-    const homeDir = app.getPath('home');
-    const proxyEnvPath = join(homeDir, '.focus_proxy_env');
-    try {
-      await fs.unlink(proxyEnvPath);
-      details.push('Removed proxy environment file');
-    } catch (error) {
-      console.log('Proxy env file not found or already removed');
     }
 
     const settingsPath = getSettingsPath();

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Preferences from './preferences.jsx';
+import UpdateNotification from './UpdateNotification.jsx';
+import Setup from './Setup.jsx';
 import { nativeAuthService } from '../services/nativeAuth.js';
 import { auth0Sync } from '../services/sync.js';
 
@@ -9,6 +11,7 @@ const App = function() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [syncStatus, setSyncStatus] = useState('idle');
+  const [setupComplete, setSetupComplete] = useState(null); // null=checking, false=needed, true=done
 
   // Add this after your state declarations
   useEffect(() => {
@@ -48,6 +51,15 @@ const App = function() {
 
   const initializeAuth = async function() {
     try {
+      // Check first-time setup via local file only — avoids Auth0 round-trip on every launch
+      const settings = await window.api.getLocalSettings().catch(() => null);
+      if (!settings?.setupComplete) {
+        setSetupComplete(false);
+        setIsLoading(false);
+        return;
+      }
+      setSetupComplete(true);
+
       if (window.location.pathname === '/callback' || window.location.search.includes('code=')) {
         console.log('[App] Processing auth callback...');
         setIsAuthenticating(true);
@@ -145,6 +157,18 @@ const App = function() {
       alert('Sync failed. Please check your connection and try again.');
     }
   };
+
+  if (setupComplete === false) {
+    return (
+      <Setup
+        onComplete={() => {
+          setSetupComplete(true);
+          setIsLoading(true);
+          initializeAuth();
+        }}
+      />
+    );
+  }
 
   // Loading state - checking authentication or settings
   if (isLoading || (user && !settingsLoaded)) {
@@ -255,6 +279,7 @@ const App = function() {
   // Authenticated - show main app with preferences
   return (
     <div>
+      <UpdateNotification />
       {/* Auth status bar with cloud sync status */}
       <div style={{
         padding: '10px 20px',

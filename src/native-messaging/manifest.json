@@ -1,0 +1,9 @@
+{
+  "name": "com.focusbear.native_host",
+  "description": "Focus Bear Native Messaging Host",
+  "path": "/usr/local/bin/focusbear-native-host",
+  "type": "stdio",
+  "allowed_extensions": [
+    "focusbear@focusbear.io"
+  ]
+}

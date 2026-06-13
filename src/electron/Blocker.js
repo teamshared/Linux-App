@@ -1,17 +1,21 @@
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
-import { writeFileSync } from 'fs';
 const __dirname = dirname(__filename);
 import { ipcMain } from 'electron';
 
+// Import broadcast function from main (we'll export it)
+let broadcastBlocklistUpdate = null;
 
+export function setBroadcastFunction(broadcastFn) {
+  broadcastBlocklistUpdate = broadcastFn;
+}
 
 ipcMain.on("url-channel", function (event, arg) {
 
   let urls = []
-  console.log(arg); 
-  
+  console.log(arg);
+
   const urlArray = arg
     .split('\n')
     .map(url => url.trim())
@@ -21,26 +25,28 @@ ipcMain.on("url-channel", function (event, arg) {
   console.log("\n")
   console.log(typeof(urlArray))
 
-  
+
   try {
-    const fileContent = urlArray.join('\n');
-    const tempFilePath = '/tmp/focusbear-blocklist.txt'; // Temporary file path for the blocklist
-    writeFileSync( tempFilePath, fileContent, 'utf8' )
-    console.log(`\nSaved ${urlArray.length} (sub)domains to: ${tempFilePath}\n`);
-    event.reply('reply-message', `Saved ${urlArray.length} (sub)domains to file!`);
+    // Broadcast to native messaging hosts
+    if (broadcastBlocklistUpdate) {
+      broadcastBlocklistUpdate(urlArray);
+    }
+
+    console.log(`\nBroadcasting ${urlArray.length} (sub)domains to native hosts\n`);
+    event.reply('reply-message', `Updated ${urlArray.length} (sub)domains!`);
   }
   catch (error){
-    console.error(`\nError saving file: ${error.message}\n`);
-    event.reply('reply-message', `Error saving file: ${error.message}`);
+    console.error(`\nError broadcasting blocklist: ${error.message}\n`);
+    event.reply('reply-message', `Error updating blocklist: ${error.message}`);
   }
-  
+
 });
 
 ipcMain.on("keywords-channel", function (event, arg) {
 
   let urls = []
-  console.log(arg); 
-  
+  console.log(arg);
+
   const urlArray = arg
     .split('\n')
     .map(url => url.trim())
@@ -50,19 +56,10 @@ ipcMain.on("keywords-channel", function (event, arg) {
   console.log("\n")
   console.log(typeof(urlArray))
 
-  
-  try {
-    const fileContent = urlArray.join('\n');
-    const tempFilePath = '/tmp/focusbear-keywords.txt'; // Temporary file path for the blocklist
-    writeFileSync( tempFilePath, fileContent, 'utf8' )
-    console.log(`\nSaved ${urlArray.length} keywords to: ${tempFilePath}\n`);
-    event.reply('reply-message', `Saved ${urlArray.length} keywords to file!`);
-  }
-  catch (error){
-    console.error(`\nError saving file: ${error.message}\n`);
-    event.reply('reply-message', `Error saving file: ${error.message}`);
-  }
-  
+  // Keywords functionality not yet implemented for native messaging
+  console.log(`\nReceived ${urlArray.length} keywords (not yet implemented)\n`);
+  event.reply('reply-message', `Keywords received: ${urlArray.length} (not yet implemented)`);
+
 });
 
 

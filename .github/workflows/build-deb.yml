@@ -1,0 +1,188 @@
+# ============================================================
+# Focus Bear — Linux Build Pipeline
+# ============================================================
+# Triggered on every push.
+#
+# What this pipeline does:
+#   1.  Checks out the code on an Ubuntu runner
+#   2.  Sets up Node.js and restores caches to speed up the build
+#   3.  Caches Electron binaries and electron-builder tools
+#   4.  Installs system dependencies: fakeroot (required by electron-builder
+#       to produce .deb packages) and zip (bundled as a .deb runtime dep;
+#       used by the app to create focusbear-extension.xpi on first launch)
+#   5.  Makes build/postinst and build/prerm executable so electron-builder
+#       embeds them correctly in the .deb control archive
+#   6.  Installs npm dependencies
+#   7.  Injects Auth0 secrets into .env so Vite can embed them at build time
+#   8.  Runs `npm run package:full` which:
+#         a. Builds the React frontend with Vite        → dist-react/
+#         b. Packages with electron-builder             → dist/
+#              AppImage  — universal, runs on any Linux without installing
+#              .deb      — Debian / Ubuntu / Mint; installs via `sudo dpkg -i`
+#              .rpm      — Fedora / RHEL / openSUSE;    installs via `sudo dnf install`
+#   9.  Uploads each artifact to the Actions run
+#
+# What the .deb package does after `sudo dpkg -i`:
+#   postinst (runs as root):
+#     • Sets chrome-sandbox SUID so Electron's process sandbox works
+#     • Creates /usr/bin/focusbear symlink so the command is on PATH
+#     • Refreshes the desktop application database
+#     • Writes /usr/local/bin/focusbear-native-host (wrapper → packaged host.js)
+#     • Installs system-wide Firefox native messaging manifest
+#       → /usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#   prerm (runs as root on uninstall):
+#     • Removes the /usr/bin symlink, the wrapper, and the system manifest
+#
+# What the Electron app does on first launch (installNativeMessaging):
+#   • Copies host.js + package.json to ~/.local/share/focusbear/native-messaging/
+#     (home-dir copy keeps files reachable by snap Firefox's sandbox)
+#   • Copies extension files to ~/.local/share/focusbear/extension/
+#   • Writes ~/.local/bin/focusbear-native-host pointing to the home-dir copy
+#   • Writes native messaging manifests for both regular Firefox and snap Firefox
+#       ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#       ~/snap/firefox/common/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#   • Packs the extension as focusbear-extension.xpi so snap Firefox's XDG
+#     portal restriction (single-file access only) is not a problem
+#
+# extraResources bundled into the package:
+#   resources/native-messaging/  — host.js, package.json, install.js, manifest.json
+#   resources/extension/         — all Firefox extension files
+#   resources/python/            — Python helper scripts
+#
+# GITHUB_TOKEN is provided automatically by GitHub Actions; no setup needed.
+# ============================================================
+
+name: Build Linux App
+
+on:
+  push:
+    # branches:
+    #   - dev   # uncomment to restrict to the dev branch only
+
+jobs:
+  build:
+    name: Build & Package (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      # ----------------------------------------------------------
+      # 1. Checkout
+      # ----------------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------
+      # 2. Node.js setup
+      # ----------------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # ----------------------------------------------------------
+      # 3. Cache Electron binaries (~100 MB)
+      # ----------------------------------------------------------
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      # ----------------------------------------------------------
+      # 4. Cache electron-builder tools
+      # ----------------------------------------------------------
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+
+      # ----------------------------------------------------------
+      # 5. System dependencies
+      #    fakeroot — lets electron-builder build .deb without root
+      #    rpm      — provides rpmbuild, required by electron-builder
+      #               to assemble the .rpm package on an Ubuntu runner
+      #    zip      — declared as a .deb runtime dep; the app uses it
+      #               on first launch to create focusbear-extension.xpi
+      #               so snap Firefox (XDG portal) can load the extension
+      #               from a single file instead of a directory
+      # ----------------------------------------------------------
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y fakeroot rpm zip
+
+      # ----------------------------------------------------------
+      # 6. Make installer scripts executable
+      #    electron-builder embeds these into the .deb control archive
+      #    (postinst/prerm) and the .rpm spec file (rpm-postinst/rpm-prerm);
+      #    they must be executable or dpkg/rpm will refuse to run them.
+      # ----------------------------------------------------------
+      - name: Make installer scripts executable
+        run: chmod +x build/postinst build/prerm build/rpm-postinst build/rpm-prerm
+
+      # ----------------------------------------------------------
+      # 7. Install npm dependencies
+      # ----------------------------------------------------------
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ----------------------------------------------------------
+      # 8. Inject Auth0 credentials into .env
+      # ----------------------------------------------------------
+      - name: Create .env file
+        run: |
+          printf 'VITE_AUTH0_DOMAIN=%s\n' "$VITE_AUTH0_DOMAIN" > .env
+          printf 'VITE_AUTH0_CLIENT_ID=%s\n' "$VITE_AUTH0_CLIENT_ID" >> .env
+        env:
+          VITE_AUTH0_DOMAIN: ${{ secrets.VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}
+
+      # ----------------------------------------------------------
+      # 9. Verify secrets (partial reveal, no sensitive data exposed)
+      # ----------------------------------------------------------
+      - name: Verify secret format
+        run: |
+          echo "Domain starts with: ${VITE_AUTH0_DOMAIN:0:4}***"
+          echo "Client ID starts with: ${VITE_AUTH0_CLIENT_ID:0:4}***"
+        env:
+          VITE_AUTH0_DOMAIN: ${{ secrets.VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ secrets.VITE_AUTH0_CLIENT_ID }}
+
+      # ----------------------------------------------------------
+      # 10. Build and package
+      #     Produces: dist/*.AppImage  dist/*.deb  dist/*.rpm
+      # ----------------------------------------------------------
+      - name: Build and package
+        run: npm run package:full
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----------------------------------------------------------
+      # 11. Upload artifacts
+      # ----------------------------------------------------------
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusbear-linux-AppImage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload .deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusbear-linux-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+      - name: Upload .rpm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusbear-linux-rpm
+          path: dist/*.rpm
+          if-no-files-found: error

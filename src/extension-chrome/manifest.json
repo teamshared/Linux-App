@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Focus Bear Blocker",
+  "version": "1.0.0",
+  "description": "Displays and enforces block lists from Focus Bear app",
+  "author": "Focus Bear",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkH3zPABO5NWWTWXuGrqbJts6CAjgyiOWj0/GD8YJpoJRvFiaMC4ROAqtBxcUc0mqK0O1ZYtj+MmPN12/cHJ2xecXpc6HZ5XOQZxurKhVwwTgCR8v0ZpxV0JzBksqL/cMUP3YowiZREjtGfyWZ5DyNXGU8e3BBnzd0QY5d7GjF9v1tQBSPigCpo74Ehn/93UCm1mmMpnbAy/Ju8EZGeFZSlrQGGKUP2YUUQmTJYNYryJpaMYchMrRBAj0npVdstlJcFrZgFXAH/GuElwggIzWjR1ayxbRdcIFTl1cFXGR0ivPS1PpEie1m1gD52O6ybBs6/KXtbw2PiKsDtvhBFANFQIDAQAB",
+
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "tabs",
+    "declarativeNetRequest",
+    "alarms"
+  ],
+  "host_permissions": ["<all_urls>"],
+
+  "web_accessible_resources": [{
+    "resources": ["blocked.html"],
+    "matches": ["<all_urls>"]
+  }],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Focus Bear Blocker",
+    "default_icon": {
+      "48": "icon.png"
+    }
+  },
+
+  "icons": {
+    "48": "icon.png"
+  }
+}

@@ -18,7 +18,8 @@
     "package": "npm run build && electron-builder --linux AppImage",
     "package:all": "npm run build && electron-builder --linux AppImage deb",
     "package:full": "npm run build && electron-builder --linux AppImage deb rpm",
-    "package:dir": "npm run build && electron-builder --dir"
+    "package:dir": "npm run build && electron-builder --dir",
+    "install-native-messaging": "node src/native-messaging/install.js"
   },
   "dependencies": {
     "auth0": "^4.29.0",
@@ -39,7 +40,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
-    "vite": "^7.1.5",
+    "vite": "^7.3.1",
     "wait-on": "^8.0.4"
   },
   "build": {
@@ -79,10 +80,22 @@
       "executableName": "focusbear"
     },
     "deb": {
-      "depends": ["python3", "mitmproxy"]
+      "depends": [
+        "python3",
+        "nodejs",
+        "zip"
+      ],
+      "afterInstall": "build/postinst",
+      "afterRemove": "build/prerm"
     },
     "rpm": {
-      "depends": ["python3", "mitmproxy"]
+      "depends": [
+        "python3",
+        "nodejs",
+        "zip"
+      ],
+      "afterInstall": "build/rpm-postinst",
+      "afterRemove": "build/rpm-prerm"
     },
     "protocols": [
       {
@@ -96,6 +109,7 @@
       "dist-react/**/*",
       "src/electron/**/*",
       "src/ui/**/*",
+      "src/extension-chrome/**/*",
       "public/**/*",
       "package.json"
     ],
@@ -106,6 +120,34 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "src/native-messaging",
+        "to": "native-messaging",
+        "filter": [
+          "host.js",
+          "install.js",
+          "manifest.json",
+          "package.json"
+        ]
+      },
+      {
+        "from": "src/extension",
+        "to": "extension",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "src/extension-chrome",
+        "to": "extension-chrome",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/focusbear.service",
+        "to": "focusbear.service"
       }
     ],
     "directories": {
