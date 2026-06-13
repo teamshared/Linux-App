@@ -231,8 +231,8 @@ cat ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
 Re-run installation; dependency checker will auto-install:
 
 ```bash
-sudo apt-get install ./focusbear-1.0.0-amd64.deb  # Debian
-sudo dnf install ./focusbear-1.0.0-x86_64.rpm    # Fedora
+sudo apt-get install ./focusbear-0.1.0-amd64.deb  # Debian
+sudo dnf install ./focusbear-0.1.0-x86_64.rpm    # Fedora
 ```
 
 ### Debug Commands
@@ -369,4 +369,4 @@ VITE_AUTH0_CLIENT_ID=your_client_id
 
 ## Version
 
-**Focus Bear v1.0.0** - Linux Distraction Blocker
+**Focus Bear v0.1.0** - Linux Distraction Blocker
