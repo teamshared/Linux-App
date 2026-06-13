@@ -2,7 +2,7 @@
 
 A lightweight, browser-native URL blocking application for Linux using Electron and native messaging architecture.
 
-**Status:** [1.0.0] - Production Ready
+**Status:** [0.1.0] - Ready to Open Source
 
 ---
 
@@ -26,17 +26,17 @@ npm run start:prod     # Production mode
 
 ```bash
 # Debian/Ubuntu
-sudo dpkg -i ./focusbear-1.0.0-amd64.deb
+sudo dpkg -i ./focusbear-0.1.0-amd64.deb
 
 # Fedora/RHEL
-sudo dnf install ./focusbear-1.0.0-x86_64.rpm
+sudo dnf install ./focusbear-0.1.0-x86_64.rpm
 
 # openSUSE
-sudo zypper install ./focusbear-1.0.0-x86_64.rpm
+sudo zypper install ./focusbear-0.1.0-x86_64.rpm
 
 # Or use AppImage (no installation)
-chmod +x focusbear-1.0.0-x86_64.AppImage
-./focusbear-1.0.0-x86_64.AppImage
+chmod +x focusbear-0.1.0-x86_64.AppImage
+./focusbear-0.1.0-x86_64.AppImage
 ```
 
 ---
@@ -279,9 +279,9 @@ npm run package:full                # Build all formats
 ```
 
 Output:
-- `dist/focusbear-1.0.0-x86_64.AppImage` (~160 MB)
-- `dist/focusbear-1.0.0-amd64.deb` (~107 MB)
-- `dist/focusbear-1.0.0-x86_64.rpm` (~107 MB)
+- `dist/focusbear-0.1.0-x86_64.AppImage` (~160 MB)
+- `dist/focusbear-0.1.0-amd64.deb` (~77 MB)
+- `dist/focusbear-0.1.0-x86_64.rpm` (~77 MB)
 
 ---
 
@@ -364,7 +364,6 @@ VITE_AUTH0_CLIENT_ID=your_client_id
 
 - **Issues:** GitHub Issues
 - **Docs:** See links above
-- **Video Overview:** [Project Overview](https://drive.google.com/file/d/1Af-z7W5sLIHynJB9LSC3MY7zyKFEmIZy/view?usp=sharing)
 
 ---
 
