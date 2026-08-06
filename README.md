@@ -370,3 +370,9 @@ VITE_AUTH0_CLIENT_ID=your_client_id
 ## Version
 
 **Focus Bear v0.1.0** - Linux Distraction Blocker
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
