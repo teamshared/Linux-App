@@ -7,7 +7,7 @@ set -e
 
 APP_DIR="/opt/Focus Bear"
 NATIVE_HOST_DEST="/usr/local/bin/focusbear-native-host"
-MANIFEST_NAME="com.focusbear.native_host.json"
+MANIFEST_NAME="com.focusbear.host.json"
 # Fedora/RHEL-packaged Firefox is built with --libdir=/usr/lib64 and scans
 # /usr/lib64/mozilla/native-messaging-hosts on x86_64; Mozilla's own tarball
 # and openSUSE's Firefox scan /usr/lib. Write to both so the manifest is
@@ -176,7 +176,7 @@ for dir in $FIREFOX_MANIFEST_DIRS; do
     else
         cat > "$dir/$MANIFEST_NAME" << 'MANIFEST'
 {
-  "name": "com.focusbear.native_host",
+  "name": "com.focusbear.host",
   "description": "Focus Bear Native Messaging Host",
   "path": "/usr/local/bin/focusbear-native-host",
   "type": "stdio",

@@ -29,7 +29,7 @@
 #     • Refreshes the desktop application database
 #     • Writes /usr/local/bin/focusbear-native-host (wrapper → packaged host.js)
 #     • Installs system-wide Firefox native messaging manifest
-#       → /usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#       → /usr/lib/mozilla/native-messaging-hosts/com.focusbear.host.json
 #   prerm (runs as root on uninstall):
 #     • Removes the /usr/bin symlink, the wrapper, and the system manifest
 #
@@ -39,8 +39,8 @@
 #   • Copies extension files to ~/.local/share/focusbear/extension/
 #   • Writes ~/.local/bin/focusbear-native-host pointing to the home-dir copy
 #   • Writes native messaging manifests for both regular Firefox and snap Firefox
-#       ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
-#       ~/snap/firefox/common/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+#       ~/.mozilla/native-messaging-hosts/com.focusbear.host.json
+#       ~/snap/firefox/common/.mozilla/native-messaging-hosts/com.focusbear.host.json
 #   • Packs the extension as focusbear-extension.xpi so snap Firefox's XDG
 #     portal restriction (single-file access only) is not a problem
 #

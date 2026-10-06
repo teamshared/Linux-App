@@ -377,7 +377,7 @@ async function installNativeMessaging() {
 
     // Write Firefox manifest to all known locations (regular + snap)
     const firefoxManifest = JSON.stringify({
-      name: 'com.focusbear.native_host',
+      name: 'com.focusbear.host',
       description: 'Focus Bear Native Messaging Host',
       path: wrapperPath,
       type: 'stdio',
@@ -388,12 +388,12 @@ async function installNativeMessaging() {
       join(homedir(), 'snap', 'firefox', 'common', '.mozilla', 'native-messaging-hosts'),
     ]) {
       await fs.mkdir(dir, { recursive: true }).catch(() => {});
-      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), firefoxManifest).catch(() => {});
+      await fs.writeFile(join(dir, 'com.focusbear.host.json'), firefoxManifest).catch(() => {});
     }
 
     // Write Chrome/Chromium native messaging manifests
     const chromeManifest = JSON.stringify({
-      name: 'com.focusbear.native_host',
+      name: 'com.focusbear.host',
       description: 'Focus Bear Native Messaging Host',
       path: wrapperPath,
       type: 'stdio',
@@ -408,7 +408,7 @@ async function installNativeMessaging() {
       join(homedir(), '.config', 'opera', 'NativeMessagingHosts'),
     ]) {
       await fs.mkdir(dir, { recursive: true }).catch(() => {});
-      await fs.writeFile(join(dir, 'com.focusbear.native_host.json'), chromeManifest).catch(() => {});
+      await fs.writeFile(join(dir, 'com.focusbear.host.json'), chromeManifest).catch(() => {});
     }
 
     // Copy Chrome extension files and pack as .zip

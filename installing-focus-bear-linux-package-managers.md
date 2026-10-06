@@ -92,7 +92,7 @@ Defined in `build/rpm-postinst`. It runs as root after files are laid down and:
 - Sets `chrome-sandbox` SUID so Electron's process sandbox works.
 - Writes a `/usr/bin/focusbear` wrapper that invokes the binary in `/opt/Focus Bear/` with `--no-sandbox` (the install path contains a space, which breaks Electron's `LaunchProcess` argv splitting).
 - Patches the `.desktop` `Exec=` to point at the wrapper.
-- Installs a system-wide Firefox native messaging manifest at `/usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json` and a wrapper at `/usr/local/bin/focusbear-native-host`.
+- Installs a system-wide Firefox native messaging manifest at `/usr/lib/mozilla/native-messaging-hosts/com.focusbear.host.json` and a wrapper at `/usr/local/bin/focusbear-native-host`.
 
 ### Verify
 

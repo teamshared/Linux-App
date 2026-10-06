@@ -195,7 +195,7 @@ sudo zypper remove focusbear
 ```bash
 # Remove all user data
 rm -rf ~/.local/share/focusbear/
-rm -rf ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+rm -rf ~/.mozilla/native-messaging-hosts/com.focusbear.host.json
 rm -rf ~/.config/focusbear/
 rm -f /tmp/focusbear.sock
 ```
@@ -224,7 +224,7 @@ pkill -f focusbear
 ls -la ~/.local/share/focusbear/focusbear-extension.xpi
 
 # Check Firefox manifest
-cat ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+cat ~/.mozilla/native-messaging-hosts/com.focusbear.host.json
 ```
 
 #### Missing Dependencies
@@ -326,9 +326,9 @@ Flatpak sandboxing prevents:
 | App config | `~/.config/focusbear/` |
 | App data | `~/.local/share/focusbear/` |
 | Native host | `/usr/local/bin/focusbear-native-host` |
-| Firefox manifest (system) | `/usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json` |
-| Firefox manifest (user) | `~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json` |
-| Chrome manifest | `~/.config/google-chrome/NativeMessagingHosts/com.focusbear.native_host.json` |
+| Firefox manifest (system) | `/usr/lib/mozilla/native-messaging-hosts/com.focusbear.host.json` |
+| Firefox manifest (user) | `~/.mozilla/native-messaging-hosts/com.focusbear.host.json` |
+| Chrome manifest | `~/.config/google-chrome/NativeMessagingHosts/com.focusbear.host.json` |
 | Logs | `/tmp/focusbear-native-host.log` |
 | Socket | `/tmp/focusbear.sock` (runtime only) |
 

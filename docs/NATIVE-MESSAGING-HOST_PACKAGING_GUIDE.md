@@ -23,8 +23,8 @@ Previously the installer copied `host.js` to `/usr/local/bin` and required root.
 ~/.local/share/focusbear/native-messaging/  ← host.js + package.json
 ~/.local/share/focusbear/extension/         ← extension source files
 ~/.local/share/focusbear/focusbear-extension.xpi  ← zipped extension for snap Firefox
-~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
-~/snap/firefox/common/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+~/.mozilla/native-messaging-hosts/com.focusbear.host.json
+~/snap/firefox/common/.mozilla/native-messaging-hosts/com.focusbear.host.json
 ```
 
 Both the standard and snap Firefox manifest locations are written so the native host works regardless of how Firefox was installed.
@@ -115,7 +115,7 @@ cat /usr/bin/focusbear
 grep '^Exec' /usr/share/applications/focusbear.desktop
 
 # Check system-wide Firefox manifest
-cat /usr/lib/mozilla/native-messaging-hosts/com.focusbear.native_host.json
+cat /usr/lib/mozilla/native-messaging-hosts/com.focusbear.host.json
 
 # Launch app and check per-user files are created
 focusbear &

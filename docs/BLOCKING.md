@@ -92,8 +92,8 @@ The Electron app will automatically:
 ### File Locations
 
 - **Native Host Binary:** `/usr/local/bin/focusbear-native-host`
-- **Firefox Manifest:** `~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json`
-- **Chrome Manifest:** `~/.config/google-chrome/NativeMessagingHosts/com.focusbear.native_host.json`
+- **Firefox Manifest:** `~/.mozilla/native-messaging-hosts/com.focusbear.host.json`
+- **Chrome Manifest:** `~/.config/google-chrome/NativeMessagingHosts/com.focusbear.host.json`
 - **Host Logs:** `/tmp/focusbear-native-host.log`
 
 ### Debugging

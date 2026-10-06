@@ -69,7 +69,7 @@ Output: `dist/focusbear-<version>-x86_64.rpm`
 which focusbear
 
 # Check Firefox extension is registered
-ls /usr/lib{,64}/mozilla/native-messaging-hosts/com.focusbear.native_host.json
+ls /usr/lib{,64}/mozilla/native-messaging-hosts/com.focusbear.host.json
 
 # Check package info
 rpm -qi focusbear

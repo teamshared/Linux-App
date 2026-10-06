@@ -36,7 +36,7 @@ async function install() {
 
     // 2. Install Firefox manifest pointing to the user-local wrapper
     const firefoxManifestDir = join(homedir(), '.mozilla', 'native-messaging-hosts');
-    const targetManifestPath = join(firefoxManifestDir, 'com.focusbear.native_host.json');
+    const targetManifestPath = join(firefoxManifestDir, 'com.focusbear.host.json');
 
     console.log(`\n🦊 Installing Firefox native messaging manifest...`);
     console.log(`   Target: ${targetManifestPath}`);
@@ -45,7 +45,7 @@ async function install() {
 
     // Generate manifest with the actual wrapper path (varies per user / dev vs packaged)
     const manifest = {
-      name: 'com.focusbear.native_host',
+      name: 'com.focusbear.host',
       description: 'Focus Bear Native Messaging Host',
       path: targetHostPath,
       type: 'stdio',

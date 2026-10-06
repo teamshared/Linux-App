@@ -4,7 +4,7 @@ set -e
 APP_DIR="/opt/Focus Bear"
 NATIVE_HOST_DEST="/usr/local/bin/focusbear-native-host"
 FIREFOX_MANIFEST_DIR="/usr/lib/mozilla/native-messaging-hosts"
-MANIFEST_NAME="com.focusbear.native_host.json"
+MANIFEST_NAME="com.focusbear.host.json"
 
 # ── Dependency Checker ───────────────────────────────────────────────────────
 # Check for required dependencies and prompt to install if missing
@@ -219,7 +219,7 @@ if [ -f "$MANIFEST_SRC" ]; then
 else
     cat > "$FIREFOX_MANIFEST_DIR/$MANIFEST_NAME" << 'MANIFEST'
 {
-  "name": "com.focusbear.native_host",
+  "name": "com.focusbear.host",
   "description": "Focus Bear Native Messaging Host",
   "path": "/usr/local/bin/focusbear-native-host",
   "type": "stdio",

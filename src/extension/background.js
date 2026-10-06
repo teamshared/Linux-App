@@ -95,7 +95,7 @@ function connectToNativeHost() {
   log('Attempting to connect to native host...');
   
   try {
-    port = browser.runtime.connectNative('com.focusbear.native_host');
+    port = browser.runtime.connectNative('com.focusbear.host');
     
     port.onMessage.addListener((message) => {
       log('Received message from native host:', message);

@@ -109,7 +109,7 @@ Remove the native messaging components:
 sudo rm /usr/local/bin/focusbear-native-host
 
 # Remove Firefox manifest
-rm ~/.mozilla/native-messaging-hosts/com.focusbear.native_host.json
+rm ~/.mozilla/native-messaging-hosts/com.focusbear.host.json
 ```
 
 ## Next Steps
