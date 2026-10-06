@@ -7,10 +7,22 @@
 
 import { appendFileSync } from 'fs';
 import { createConnection } from 'net';
+import { tmpdir } from 'os';
+import { join } from 'path'; 
 
-const SOCKET_PATH = '/tmp/focusbear.sock';
+const SOCKET_PATH = process.platform === "win32" ? "\\\\.\\pipe\\focusbear" : "/tmp/focusbear.sock";
+
+const LOG_PATH = join(tmpdir(), 'focusbear-native-host.log');
+
+const SESSION_REQUESTS = new Set ([
+  'REQUEST_SESSION_START',
+  'REQUEST_SESSION_PAUSE',
+  'REQUEST_SESSION_RESUME',
+  'REQUEST_SESSION_CANCEL'
+]);
 
 let appSocket = null;
+let socketBuf = ''; 
 let isConnectedToApp = false;
 let cachedBrowserId = null;
 let pendingBlocklistCallback = null;
@@ -47,9 +59,11 @@ function readMessage(callback) {
 
 // Log to a file since stdout is used for messaging
 function log(message) {
-  const logPath = '/tmp/focusbear-native-host.log';
-  const timestamp = new Date().toISOString();
-  appendFileSync(logPath, `[${timestamp}] ${message}\n`);
+  try {
+    appendFileSync(LOG_PATH, `[${new Date().toISOString()}] ${message}\n`);
+  } catch {
+    // Ignore
+  }
 }
 
 // Connect to Electron app via Unix socket
@@ -59,6 +73,7 @@ function connectToApp() {
   appSocket = createConnection(SOCKET_PATH);
 
   appSocket.on('connect', () => {
+    socketBuf = '';
     log('Connected to Electron app via socket');
     isConnectedToApp = true;
 
@@ -67,9 +82,11 @@ function connectToApp() {
   });
 
   appSocket.on('data', (data) => {
-    const lines = data.toString().split('\n').filter(line => line.trim());
+    socketBuf += data.toString('utf8');
+    const lines = socketBuf.split('\n');
+    socketBuf = lines.pop();
 
-    lines.forEach(line => {
+    lines.filter(line => line.trim()).forEach(line => {
       try {
         const message = JSON.parse(line);
         log(`Received from app: ${JSON.stringify(message)}`);
@@ -103,6 +120,9 @@ function connectToApp() {
             pendingBlocklistTimeout = null;
             cb(null, message.data);
           }
+        } else if (typeof message.type === 'string' && message.type.startsWith('SESSION_')) {
+          log(`Forwarding ${message.type} to extension`);
+          sendMessage({ ...message, timestamp: message.timestamp ?? Date.now() });
         }
       } catch (error) {
         log(`Error parsing socket message: ${error.message}`);
@@ -117,6 +137,7 @@ function connectToApp() {
 
   appSocket.on('close', () => {
     log('Socket connection closed. Will retry...');
+    socketBuf = '';
     isConnectedToApp = false;
     appSocket = null;
 
@@ -167,6 +188,16 @@ connectToApp();
 readMessage((message) => {
   log(`Received from extension: ${JSON.stringify(message)}`);
 
+  if (SESSION_REQUESTS.has(message.type)) {
+    if (isConnectedToApp && appSocket) {
+      appSocket.write(JSON.stringify({ ...message, timestamp: Date.now() }) + '\n');
+    } else {
+      log(`Not connected to app, ${message.type} not forwarded`);
+      sendMessage({ type: 'ERROR', error: "Not connected to app", requestType: message.type});
+    }
+    return;
+  }
+
   switch (message.type) {
     case 'GET_BLOCKLIST':
       requestBlocklist((error, blocklist) => {
@@ -189,6 +220,7 @@ readMessage((message) => {
 
     case 'PING':
       log('Received ping, sending pong');
+      const browserChanged = message.browser && message.browser !== cachedBrowserId;
       if (message.browser) cachedBrowserId = message.browser;
       sendMessage({
         type: 'PONG',
@@ -196,6 +228,9 @@ readMessage((message) => {
         connectedToApp: isConnectedToApp
       });
       if (isConnectedToApp && appSocket) {
+        if (browserChanged) {
+          appSocket.write(JSON.stringify({ type: 'NATIVE_HOST_CONNECTED', browser: cachedBrowserId }) + '\n');
+        }
         appSocket.write(JSON.stringify({ type: 'PING', browser: cachedBrowserId || 'unknown', timestamp: Date.now() }) + '\n');
       }
       break;
