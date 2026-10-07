@@ -58,13 +58,6 @@ async function install() {
       await fs.rm(join(firefoxManifestDir, stale), { force: true });
     }
 
-    if (registeredCount === 0) {
-      console.log(`   ℹ️  No Firefox profiles found.`);
-      console.log(`   Load manually: Firefox → about:debugging → Load Temporary Add-on`);
-    } else {
-      console.log(`   ℹ️  Restart Firefox to apply. If prompted to enable the extension, click Allow.`);
-    }
-
     console.log(`✅ Installation complete!\n`);
     console.log(`Native host:     ${targetHostPath}`);
     console.log(`Firefox manifest: ${targetManifestPath}\n`);
