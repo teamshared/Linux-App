@@ -75,6 +75,17 @@ async function saveWhitelistToDisk(entries) {
   }
 }
 
+function markBrowserConnected(socket, browser) {
+  const client = socketClients.get(socket);
+  if (client) client.browser = browser;
+  browserLastConnected.set(browser, Date.now());
+  if (!connectedBrowsers.has(browser)) {
+    connectedBrowsers.add(browser);
+    if (mainWindow) mainWindow.webContents.send('extension-connected', browser);
+  }
+  if (!warningBrowserId || warningBrowserId === browser) cancelExtensionWarning();
+}
+
 async function startSocketServer() {
   try {
     await unlink(SOCKET_PATH);
@@ -121,19 +132,11 @@ async function startSocketServer() {
                   socketClients.delete(s);
                 }
               }
-              if (socketClients.has(socket)) socketClients.get(socket).browser = message.browser;
-              browserLastConnected.set(message.browser, Date.now());
+              markBrowserConnected(socket, message.browser);
               console.log(`[Socket] Host identified as ${message.browser} on connect`);
             }
           } else if (message.type === 'PING') {
-            const browser = message.browser || 'unknown';
-            if (socketClients.has(socket)) socketClients.get(socket).browser = browser;
-            browserLastConnected.set(browser, Date.now());
-            if (!connectedBrowsers.has(browser)) {
-              connectedBrowsers.add(browser);
-              if (mainWindow) mainWindow.webContents.send('extension-connected', browser);
-            }
-            if (!warningBrowserId || warningBrowserId === browser) cancelExtensionWarning();
+            markBrowserConnected(socket, message.browser || 'unknown');
           } else if (message.type === 'GET_BLOCKLIST') {
             console.log(`[Socket] Sending blocklist: ${currentBlocklist.length} entries`);
             socket.write(JSON.stringify({
