@@ -61,7 +61,6 @@ async function install() {
     if (registeredCount === 0) {
       console.log(`   ℹ️  No Firefox profiles found.`);
       console.log(`   Load manually: Firefox → about:debugging → Load Temporary Add-on`);
-      console.log(`   Select: ${join(extensionDir, 'manifest.json')}`);
     } else {
       console.log(`   ℹ️  Restart Firefox to apply. If prompted to enable the extension, click Allow.`);
     }
