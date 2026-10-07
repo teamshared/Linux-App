@@ -9,7 +9,6 @@ import { appendFileSync } from 'fs';
 import { createConnection } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path'; 
-import { cache } from 'react';
 
 const SOCKET_PATH = process.platform === "win32" ? "\\\\.\\pipe\\focusbear" : "/tmp/focusbear.sock";
 
