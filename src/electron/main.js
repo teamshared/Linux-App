@@ -156,6 +156,8 @@ async function startSocketServer() {
             currentWhitelist = message.data.filter(e => e.expiresAt > Date.now());
             console.log(`[Socket] Whitelist updated: ${currentWhitelist.length} entries`);
             saveWhitelistToDisk(currentWhitelist);
+          } else if (typeof message.type === 'string' && message.type.startsWith('REQUEST_SESSION_')) {
+            handleSessionRequest(socket, message);
           }
         } catch (error) {
           console.error('[Socket] Error parsing message:', error);
@@ -466,6 +468,77 @@ const urlGrabber = new SimpleUrlGrabber();
 // Unified focus session state
 let isFocusActive = false;
 
+// Extension session sync (native messaging)
+let isFocusPaused = false;
+
+// Send a session event to all connected native messaging clients
+function emitSessionEvent(type, extra = {}, exceptSocket = null) {
+  const message = JSON.stringify({ type, ...extra, timestamp: Date.now() }) + '\n';
+  let sent = 0;
+  for (const socket of socketClients.keys()) {
+    if (socket === exceptSocket) continue;
+    try { socket.write(message); sent++; } catch (e) { 
+      console.error('[Session] emit failed:', e); }
+  }
+  console.log(`[Session] ${type} sent to ${sent} clients(s)`);
+}
+
+// Handles session control requests recieved from the browser extension
+function handleSessionRequest(socket, message) {
+  const detail = { durationSeconds: message.durationSeconds, task: message.task };
+
+  switch (message.type) {
+    case 'REQUEST_SESSION_START':
+      if (isFocusActive) { 
+        console.log('[Session START ignored - already running'); 
+        return; 
+      }
+      isFocusActive = true;
+      isFocusPaused = false;
+      focusState.setActive(true);
+      broadcastFocusState(true);
+      broadcastBlocklistUpdate(currentBlocklist);
+      emitSessionEvent('SESSION_START', detail, socket);
+      break;
+
+    case 'REQUEST_SESSION_PAUSE':
+      if (!isFocusActive || isFocusPaused) { console.log('[Session] PAUSE ignored'); return; }
+      isFocusPaused = true;
+      emitSessionEvent('SESSION_PAUSE', {}, socket);
+      break;
+    
+    case 'REQUEST_SESSION_RESUME':
+      if (!isFocusActive || !isFocusPaused) { console.log('[Session] RESUME ignored'); return; }
+      isFocusPaused = false;
+      emitSessionEvent('SESSION_RESUME', {}, socket);
+      break;
+    
+    case 'REQUEST_SESSION_CANCEL':
+      if (!isFocusActive) { console.log('[Session] CANCEL ignored'); return; }
+      isFocusActive = false;
+      isFocusPaused = false;
+      focusState.setActive(false);
+      broadcastFocusState(false);
+      emitSessionEvent('SESSION_CANCEL', {}, socket);
+      break;
+    
+    default:
+      return;
+  }
+
+  // Let the UI pick up the duration / task if it listens
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('extension-session-request', { action: message.type, ...detail });
+  }
+}
+
+// Handle Pause/Resume requets from the desktop application's UI
+ipcMain.on('focus-session-pause', function(event, paused) {
+  if (!isFocusActive || isFocusPaused === !!paused) return;
+  isFocusPaused = !!paused;
+  emitSessionEvent(isFocusPaused ? 'SESSION_PAUSE' : 'SESSION_RESUME');
+});
+
 function getWebviewContainerBounds() {
     const bounds = mainWindow.getBounds();
     const padding = 20;
@@ -658,6 +731,8 @@ ipcMain.on('focus-session-true', function(event) {
     isFocusActive = true;
     focusState.setActive(true);
     broadcastFocusState(true);
+    isFocusPaused = false;
+    emitSessionEvent('SESSION_START');
     broadcastBlocklistUpdate(currentBlocklist);
     console.log('Focus session started (native messaging extension)');
 
@@ -680,6 +755,8 @@ ipcMain.on('focus-session-false', function(event) {
     isFocusActive = false;
     focusState.setActive(false);
     broadcastFocusState(false);
+    isFocusPaused = false;
+    emitSessionEvent('SESSION_CANCEL');
     console.log('Focus session ended');
 
     try {
