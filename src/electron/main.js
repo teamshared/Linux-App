@@ -481,11 +481,13 @@ let isFocusPaused = false;
 let sessionEndsAt = null;
 let sessionRemainingMs = null;
 let sessionTask = '';
+let sessionTotalSeconds = null;
 
 function beginSessionTiming(durationSeconds, task) {
   sessionEndsAt = Date.now() + durationSeconds * 1000;
   sessionRemainingMs = null;
   sessionTask = task || '';
+  sessionTotalSeconds = durationSeconds;
 }
 
 function pauseSessionTiming() {
@@ -507,6 +509,7 @@ function clearSessionTiming(){
   sessionEndsAt = null;
   sessionRemainingMs = null;
   sessionTask = '';
+  sessionTotalSeconds = null;
 }
 
 // Ensure that newly connected browsers are up to date with currently running focus sessions
@@ -525,6 +528,7 @@ function sendActiveSessionTo(socket) {
   try {
     send('SESSION_START', {
       durationSeconds: Math.ceil(remainingMs / 1000),
+      totalSeconds: sessionTotalSeconds,
       intention: sessionTask,
     });
     if (isFocusPaused) {
